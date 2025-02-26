@@ -1,5 +1,7 @@
 <h1 align="center"><img src="https://i.imgur.com/uABXHHI.png" width="30px"></img> <a href="https://github.com/bol-van/zapret">Zapret</a> (Запрет: обход блокировки Дискорда и Ютуба) </h1>
 
+![Uploading image.png…]()
+
 - Возможность обхода блокировок Ютуба и Дискорда
 - Возможность разблокировать доступ к неработающим сайтом ChatGPT, Google Gemini, Notion и другим заблокированным для России ресурсам
 - Возможность прописать кастомные DNS сервера
@@ -21,3 +23,8 @@
 ```cmd
 pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main.py"
 ```
+
+<h2 align="center">Хочу узнать подробнее </h2>
+
+### [🛡 Что такое Zapret](https://teletype.in/@censorliber/zapretvpndpi)
+### [👾 О вирусах](https://teletype.in/@censorliber/zapretvirus)
