@@ -3,7 +3,7 @@ import subprocess
 import time
 
 class ServiceManager:
-    def __init__(self, winws_exe, bin_folder, lists_folder, status_callback=None, service_name="Zapret by Censorliber"):
+    def __init__(self, winws_exe, bin_folder, lists_folder, status_callback=None, service_name="ZapretCensorliber"):
         """
         Инициализирует менеджер служб.
         
@@ -72,11 +72,19 @@ class ServiceManager:
 
             args_str = " ".join(processed_args)
             service_command = f'"{exe_path}" {args_str}'
-            create_cmd = f'sc create "{self.service_name}" binPath= "{service_command}" start= auto DisplayName= "{self.service_name}"'
-            print(f"DEBUG: Service command: {create_cmd}")
 
+            # Создаем службу без описания
+            create_cmd = (
+                f'sc create "{self.service_name}" type= own binPath= "{service_command}" '
+                f'start= auto DisplayName= "{self.service_name}"'
+            )
+            print(f"DEBUG: Service command: {create_cmd}")
             create_result = subprocess.run(create_cmd, shell=True, capture_output=True, text=True)
             if create_result.returncode == 0:
+                # Устанавливаем описание службы отдельной командой
+                desc_cmd = f'sc description "{self.service_name}" "Служба для работы Zapret DPI https://t.me/bypassblock"'
+                subprocess.run(desc_cmd, shell=True, capture_output=True, text=True)
+                
                 start_cmd = f'sc start "{self.service_name}"'
                 start_result = subprocess.run(start_cmd, shell=True, capture_output=True, text=True)
                 if start_result.returncode == 0:
@@ -107,20 +115,25 @@ class ServiceManager:
             if not self.check_service_exists():
                 self.set_status("Служба DPI не установлена")
                 return True
-                
-            # Останавливаем службу если она запущена
-            self.set_status("Останавливаем службу DPI...")
-            stop_cmd = f'sc stop "{self.service_name}"'
-            stop_result = subprocess.run(stop_cmd, shell=True, capture_output=True, text=True)
-            
+
             # Даже если остановка не удалась, пытаемся удалить
             time.sleep(0.1)  # Даем время на остановку
             
-            # Удаляем службу
-            self.set_status("Удаляем службу DPI...")
-            delete_cmd = f'sc delete "{self.service_name}"'
-            delete_result = subprocess.run(delete_cmd, shell=True, capture_output=True, text=True)
-            
+            existing_services = [self.service_name, "ZapretService", "Zapret by Censorliber"]
+            for svc in existing_services:
+                check_cmd = f'sc query "{svc}"'
+                result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
+                if result.returncode == 0:
+                    self.set_status(f"Служба \"{svc}\" уже существует. Удаление...")
+                    stop_cmd = f'sc stop "{svc}"'
+                    subprocess.run(stop_cmd, shell=True, capture_output=True)
+                    time.sleep(0.1)
+                    delete_cmd = f'sc delete "{svc}"'
+                    delete_result = subprocess.run(delete_cmd, shell=True, capture_output=True, text=True)
+                    if delete_result.returncode != 0:
+                        self.set_status(f"Не удалось удалить службу \"{svc}\"")
+                    time.sleep(0.1)
+
             if delete_result.returncode == 0:
                 self.set_status("Служба DPI успешно удалена")
                 return True
