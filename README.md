@@ -51,3 +51,4 @@ pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main
 > [!TIP]  
 > Если совсем отчаетесь то можете написать в [ЛС **БЕСПЛАТНЫЙ** запрос на удалённую настройку](https://t.me/youtubenotwork/4764) через AnyDesk. В любой момент подключение можно завершить и удалить программу.
 
+<div align='center'><img src='https://www.websitecounterfree.com/c.php?d=9&id=66073&s=1' border='0' alt='Free Website Counter'><small></small></div>
