@@ -11,3 +11,11 @@
 > Совсем никак не работает Запрет?
 > 
 > Попробуйте наш новый HTTP VPN на основе Tor с безлимитной скоростью: https://github.com/youtubediscord/roskomfree
+
+## ❗ Хочу быстро и просто. Как установить и использовать? 
+Для неопытных пользователей рекомендуем: https://t.me/bypassblock/399
+
+1. Для опытных пользователей Вы можете скачать весь архив самостоятельно с серверов GitHub: https://github.com/youtubediscord/zapret/archive/refs/heads/main.zip
+2. Далее запустите `main.py` или соберите через команду `pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main.py"`
+
+![image](https://github.com/user-attachments/assets/308f0d2f-1b13-47da-89e9-1751a98bb7e5)
