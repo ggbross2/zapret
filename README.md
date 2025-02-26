@@ -6,3 +6,8 @@
 
 > [!IMPORTANT]  
 > Есть вопросы? Задай их здесь: https://github.com/youtubediscord/zapret/issues/new или же в группе https://t.me/youtubenotwork или https://discord.gg/kkcBDG2uws
+
+> [!CAUTION]  
+> Совсем никак не работает Запрет?
+> 
+> Попробуйте наш новый HTTP VPN на основе Tor с безлимитной скоростью: `https://github.com/youtubediscord/roskomfree`
