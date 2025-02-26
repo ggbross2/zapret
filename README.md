@@ -10,4 +10,4 @@
 > [!CAUTION]  
 > Совсем никак не работает Запрет?
 > 
-> Попробуйте наш новый HTTP VPN на основе Tor с безлимитной скоростью: `https://github.com/youtubediscord/roskomfree`
+> Попробуйте наш новый HTTP VPN на основе Tor с безлимитной скоростью: https://github.com/youtubediscord/roskomfree
