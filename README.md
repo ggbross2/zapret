@@ -21,5 +21,3 @@
 ```cmd
 pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main.py"
 ```
-
-![image](https://github.com/user-attachments/assets/308f0d2f-1b13-47da-89e9-1751a98bb7e5)
