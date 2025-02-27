@@ -61,6 +61,118 @@ THEMES = {
 }
 
 class RippleButton(QPushButton):
+    def check_for_updates(self):
+        """Проверяет наличие обновлений и запускает процесс обновления при необходимости"""
+        try:
+            # Проверяем наличие модуля requests
+            try:
+                import requests
+                from packaging import version
+            except ImportError:
+                self.set_status("Установка зависимостей для проверки обновлений...")
+                subprocess.run([sys.executable, "-m", "pip", "install", "requests packaging"], 
+                            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                import requests
+                from packaging import version
+                
+            # URL для проверки обновлений
+            version_url = "обратитесь в телеграм чтобы получить сайт"
+            
+            self.set_status("Проверка наличия обновлений...")
+            response = requests.get(version_url, timeout=5)
+            if response.status_code == 200:
+                info = response.json()
+                latest_version = info.get("version")
+                release_notes = info.get("release_notes", "Нет информации об изменениях")
+                
+                # Сравниваем версии
+                if version.parse(latest_version) > version.parse(APP_VERSION):
+                    # Нашли обновление
+                    msg = QMessageBox()
+                    msg.setIcon(QMessageBox.Information)
+                    msg.setWindowTitle("Доступно обновление")
+                    msg.setText(f"Доступна новая версия: {latest_version}\nТекущая версия: {APP_VERSION}")
+                    
+                    # Добавляем информацию о выпуске
+                    msg.setInformativeText(f"Список изменений:\n{release_notes}\n\nХотите обновиться сейчас?")
+                    
+                    msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                    if msg.exec_() == QMessageBox.Yes:
+                        # Запускаем процесс обновления
+                        self.set_status("Запуск обновления...")
+                        
+                        # Получаем путь к текущему исполняемому файлу
+                        exe_path = os.path.abspath(sys.executable)
+                        
+                        # Если это не скомпилированное приложение, updater не сможет заменить .py файл
+                        if not getattr(sys, 'frozen', False):
+                            QMessageBox.warning(self, "Обновление невозможно", 
+                                            "Автоматическое обновление возможно только для скомпилированных (.exe) версий программы.")
+                            return
+                        
+                        # Путь к файлу updater.exe в папке bin
+                        updater_exe = os.path.join(BIN_FOLDER, "updater.exe")
+                        
+                        if not os.path.exists(updater_exe):
+                            # Если обновлятор отсутствует, создаем временный BAT-файл
+                            self.set_status("Создание временного обновлятора...")
+                            
+                            # Путь для временного BAT-файла
+                            temp_bat = os.path.join(os.path.dirname(exe_path), "update_temp.bat")
+                            
+                            # Создаем BAT-файл для обновления
+                            with open(temp_bat, 'w', encoding='utf-8') as f:
+                                f.write(f"""@echo off
+    echo Обновление Zapret...
+    title Обновление Zapret v{APP_VERSION} до v{latest_version}
+
+    echo Ждем завершения работы приложения...
+    timeout /t 3 /nobreak > nul
+
+    echo Скачивание новой версии...
+    REM Используем PowerShell для скачивания файла
+    powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://filedn.eu/lFS6h5cBEsru02lgr5VwkTJ/Zapret/main.exe', '%TEMP%\\zapret_new.exe')"
+
+    if %ERRORLEVEL% NEQ 0 (
+        echo Ошибка при скачивании обновления!
+        pause
+        exit /b 1
+    )
+
+    echo Замена старой версии новой...
+    copy /Y "%TEMP%\\zapret_new.exe" "{exe_path}"
+
+    if %ERRORLEVEL% NEQ 0 (
+        echo Не удалось заменить файл. Проверьте права доступа.
+        pause
+        exit /b 1
+    )
+
+    echo Обновление успешно установлено!
+    echo Запуск новой версии...
+    start "" "{exe_path}"
+
+    echo Очистка временных файлов...
+    del "%TEMP%\\zapret_new.exe" >nul 2>&1
+    del "%~f0" >nul 2>&1
+    """)
+                            
+                            # Запускаем BAT-файл
+                            subprocess.Popen([temp_bat], shell=True)
+                        else:
+                            # Если updater.exe существует, запускаем его
+                            self.set_status("Запуск обновлятора...")
+                            subprocess.Popen([updater_exe, exe_path, latest_version])
+                        
+                        # Завершаем текущий процесс после небольшой задержки
+                        self.set_status("Запущен процесс обновления. Приложение будет перезапущено.")
+                        QTimer.singleShot(2000, lambda: sys.exit(0))
+                else:
+                    self.set_status("У вас установлена последняя версия.")
+            else:
+                self.set_status(f"Не удалось проверить обновления. Код: {response.status_code}")
+        except Exception as e:
+            self.set_status(f"Ошибка при проверке обновлений: {str(e)}")
     def __init__(self, text, parent=None, color=""):
         super().__init__(text, parent)
         self._ripple_pos = QPoint()
