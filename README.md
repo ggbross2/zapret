@@ -24,6 +24,8 @@
 pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main.py"
 ```
 
+3. Чтобы включить автообновления файл updater.py должен собраться самостоятельно через команду `pyinstaller --onefile --noconsole updater.py` и загрузиться как файл `bin\updater.exe`
+
 <h2 align="center">Хочу узнать подробнее </h2>
 
 ### [🛡 Что такое Zapret](https://teletype.in/@censorliber/zapretvpndpi)
