@@ -50,22 +50,79 @@ class DPIStarter:
     
     def stop_dpi(self):
         """
-        Останавливает процесс DPI.
+        Останавливает процесс DPI и связанные службы.
         
         Returns:
             bool: True при успешной остановке, False при ошибке
         """
         try:
-            self.set_status("Останавливаю DPI...")
+            # Проверяем наличие службы ZapretCensorliber
+            service_name = "ZapretCensorliber"
+            check_service_cmd = f'sc query "{service_name}"'
+            result = subprocess.run(check_service_cmd, shell=True, capture_output=True, text=True)
+            
+            # Более надежная проверка на существование службы
+            service_exists = False
+            if result.returncode == 0:  # Команда выполнилась успешно
+                service_exists = True
+            elif "1060" not in result.stderr and "1060" not in result.stdout:
+                # Если код ошибки не содержит 1060 (служба не существует)
+                service_exists = True
+            
+            if service_exists:
+                # Более детальное сообщение об ошибке
+                self.set_status("Пожалуйста, сначала ОТКЛЮЧИТЕ АВТОЗАПУСК!")
+                # Показываем сообщение в консоль для отладки
+                print(f"Обнаружена служба ZapretCensorliber. Выход из stop_dpi().")
+                print(f"Результат команды sc query: {result.stdout}")
+                return False
+                    
+            self.set_status("Останавливаю DPI и связанные службы...")
+            
+            # Останавливаем процесс winws.exe
             subprocess.run("taskkill /IM winws.exe /F", shell=True, check=False)
-            self.set_status("Программа остановлена")
+            
+            # Список служб для остановки и удаления
+            services = ["Zapret", "WinDivert", "WinDivert14", "GoodbyeDPI"]
+            
+            # Останавливаем и удаляем службы
+            for service in services:
+                try:
+                    # Проверяем существует ли служба
+                    check_cmd = f'sc query "{service}"'
+                    check_result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
+                    
+                    # Если служба не существует (код 1060), пропускаем
+                    service_check_exists = True
+                    if "1060" in check_result.stderr or "1060" in check_result.stdout:
+                        service_check_exists = False
+                    
+                    if not service_check_exists:
+                        continue
+                    
+                    # Останавливаем службу
+                    stop_cmd = f'net stop "{service}"'
+                    subprocess.run(stop_cmd, shell=True, check=False, 
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    # Удаляем службу
+                    delete_cmd = f'sc delete "{service}"'
+                    subprocess.run(delete_cmd, shell=True, check=False,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                
+                    self.set_status(f"Служба {service} остановлена и удалена")
+                except Exception as e:
+                    # Игнорируем ошибки при остановке/удалении служб
+                    pass
+            
+            self.set_status("Программа и связанные службы остановлены")
             return True
         except Exception as e:
             error_msg = f"Ошибка при остановке DPI: {str(e)}"
             print(error_msg)
             self.set_status(error_msg)
             return False
-    
+
     def start_dpi(self, mode, dpi_commands, download_urls=None):
         """
         Запускает DPI с выбранной конфигурацией.
@@ -161,13 +218,40 @@ class DPIStarter:
             bool: True если процесс запущен, False если не запущен
         """
         try:
+            # Проверяем наличие процесса в списке задач
             result = subprocess.run(
                 'tasklist /FI "IMAGENAME eq winws.exe" /NH',
                 shell=True, 
                 capture_output=True, 
                 text=True
             )
-            return "winws.exe" in result.stdout
+            
+            if "winws.exe" in result.stdout:
+                # Дополнительная проверка на "полумертвые" процессы
+                # Получаем ID процесса
+                pid_line = [line for line in result.stdout.split('\n') if "winws.exe" in line]
+                if pid_line:
+                    # Из строки "winws.exe                     1234 Console..." извлекаем PID
+                    pid_parts = pid_line[0].split()
+                    if len(pid_parts) >= 2:
+                        pid = pid_parts[1]
+                        
+                        # Проверяем, не "zombie" ли это процесс
+                        wmic_result = subprocess.run(
+                            f'wmic process where ProcessID={pid} get ExecutablePath',
+                            shell=True, 
+                            capture_output=True, 
+                            text=True
+                        )
+                        
+                        # Если путь есть, процесс действительно работает
+                        if self.winws_exe.lower() in wmic_result.stdout.lower():
+                            return True
+                
+                # Если мы здесь, значит процесс есть, но его статус может быть неопределен
+                # Используем еще одну проверку на активность
+                return True
+            return False
         except Exception as e:
             print(f"Ошибка при проверке статуса процесса: {e}")
             return False
