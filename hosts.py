@@ -1,8 +1,6 @@
-# В файле hosts.py импортируйте переменную PROXY_DOMAINS и используйте её в методе add_proxy_domains:
-
 import ctypes
 from PyQt5.QtWidgets import QMessageBox
-from proxy_domains import PROXY_DOMAINS  # Импортируем внешний словарь
+from proxy_domains import PROXY_DOMAINS
 
 class HostsManager:
     def __init__(self, status_callback=None):
@@ -64,7 +62,7 @@ class HostsManager:
             
             self.show_popup_message(
                 "Файл hosts обновлен",
-                "Для применения изменений ОБЯЗАТЕЛЬНО СЛЕДУЕТ перезапустить веб-браузер!"
+                "Для применения изменений ОБЯЗАТЕЛЬНО СЛЕДУЕТ закрыть и открыть веб-браузер (не только сайт, а всю программу) и/или приложение Spotify!"
             )
             return True
         except PermissionError:
