@@ -1,6 +1,6 @@
 BIN_FOLDER = "bin"
 LISTS_FOLDER = "lists"
-APP_VERSION = "10.4.0"
+APP_VERSION = "11.4.0"
 
 # Базовые команды и пути
 WF_TCP = "--wf-tcp=80,443"
@@ -17,6 +17,7 @@ DISUDP = f"--filter-udp=443 --hostlist={LISTS_FOLDER}/discord.txt"
 OTHER = f"--filter-tcp=443 --hostlist={LISTS_FOLDER}/other.txt"
 faceinsta = f"--filter-tcp=443 --hostlist={LISTS_FOLDER}/faceinsta.txt --dpi-desync=split2 --dpi-desync-split-seqovl=652 --dpi-desync-split-pos=2 --dpi-desync-split-seqovl-pattern={BIN_FOLDER}/tls_clienthello_4.bin --new"
 TCP80 = "--filter-tcp=80 --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=md5sig --new"
+# добавить все из архива гитхаба flow
 
 # YouTube конфигурации
 YT1 = f"{YT} --dpi-desync=fake,split2 --dpi-desync-split-seqovl=2 --dpi-desync-split-pos=3 --dpi-desync-fake-tls={BIN_FOLDER}/tls_clienthello_www_google_com.bin --dpi-desync-ttl=3 --new"
