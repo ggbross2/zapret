@@ -1,4 +1,3 @@
-# updater.py - компилируется отдельно в updater.exe
 import os
 import sys
 import time
