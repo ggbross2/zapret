@@ -51,52 +51,35 @@ class ConnectionTestWorker(QThread):
         try:
             self.log_message(f"Проверка доступности для URL: {host}")
             
-            # Разные параметры для разных ОС
-            if platform.system().lower() == "windows":
-                command = ["ping", "-n", str(count), host]
-            else:
-                command = ["ping", "-c", str(count), host]
+            # Параметры для Windows
+            command = ["ping", "-n", str(count), host]
             
-            result = subprocess.run(command, capture_output=True, text=True)
+            # Запускаем ping без отображения консоли
+            if not hasattr(subprocess, 'CREATE_NO_WINDOW'):
+                subprocess.CREATE_NO_WINDOW = 0x08000000
+            
+            result = subprocess.run(command, capture_output=True, text=True, 
+                                creationflags=subprocess.CREATE_NO_WINDOW)
             output = result.stdout
             
-            # Анализируем результат
-            if platform.system().lower() == "windows":
-                if "TTL=" in output:
-                    success_count = output.count("TTL=")
-                    self.log_message(f"{host}: Отправлено: {count}, Получено: {success_count}")
-                    for line in output.splitlines():
-                        if "TTL=" in line:
-                            # Извлекаем время из строки
-                            try:
-                                ms = line.split("время=")[1].split("мс")[0].strip()
-                                self.log_message(f"\tДоступен (Latency: {ms}ms)")
-                            except:
-                                self.log_message(f"\tДоступен")
-                        elif "узел недоступен" in line.lower() or "превышен интервал" in line.lower():
-                            self.log_message(f"\tНедоступен")
-                else:
-                    self.log_message(f"{host}: Отправлено: {count}, Получено: 0")
-                    self.log_message(f"\tНедоступен")
+            # Анализируем результат для Windows
+            if "TTL=" in output:
+                success_count = output.count("TTL=")
+                self.log_message(f"{host}: Отправлено: {count}, Получено: {success_count}")
+                for line in output.splitlines():
+                    if "TTL=" in line:
+                        # Извлекаем время из строки
+                        try:
+                            ms = line.split("время=")[1].split("мс")[0].strip()
+                            self.log_message(f"\tДоступен (Latency: {ms}ms)")
+                        except:
+                            self.log_message(f"\tДоступен")
+                    elif "узел недоступен" in line.lower() or "превышен интервал" in line.lower():
+                        self.log_message(f"\tНедоступен")
             else:
-                if " 0% packet loss" in output:
-                    self.log_message(f"{host}: Отправлено: {count}, Получено: {count}")
-                    for line in output.splitlines():
-                        if "time=" in line:
-                            ms = line.split("time=")[1].split(" ")[0].strip()
-                            self.log_message(f"\tДоступен (Latency: {ms}ms)")
-                else:
-                    received = 0
-                    for line in output.splitlines():
-                        if "time=" in line:
-                            received += 1
-                            ms = line.split("time=")[1].split(" ")[0].strip()
-                            self.log_message(f"\tДоступен (Latency: {ms}ms)")
-                        elif "Destination Host Unreachable" in line or "Request timeout" in line:
-                            self.log_message(f"\tНедоступен")
-                    
-                    self.log_message(f"{host}: Отправлено: {count}, Получено: {received}")
-                    
+                self.log_message(f"{host}: Отправлено: {count}, Получено: 0")
+                self.log_message(f"\tНедоступен")
+                
             return True
         except Exception as e:
             self.log_message(f"Ошибка при проверке {host}: {str(e)}")
