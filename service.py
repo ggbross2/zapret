@@ -161,7 +161,7 @@ class ServiceManager:
                 start_cmd = f'sc start "{self.service_name}"'
                 start_result = subprocess.run(start_cmd, shell=True, capture_output=True, text=True)
                 if start_result.returncode == 0:
-                    self.set_status(f"Служба установлена и запущена (конфиг: {config_name})")
+                    self.set_status(f"Служба установлена и запущена\nКонфиг: {config_name}\nСМЕНИТЬ СТРАТЕГИЮ ВО ВРЕМЯ СЛУЖБЫ НЕЛЬЗЯ!")
                     return True
                 else:
                     self.set_status("Служба создана, но не удалось запустить её")
@@ -176,47 +176,72 @@ class ServiceManager:
         
     def remove_service(self):
         """
-        Удаляет службу ZapretCensorliber.
+        Удаляет службу ZapretCensorliber и другие связанные службы.
         
         Returns:
             bool: True если служба успешно удалена, False в случае ошибки
         """
         try:
-            # Проверяем существует ли служба
-            if not self.check_service_exists():
-                self.set_status("Служба не найдена")
-                return True  # Считаем успешным выполнение, если службы нет
+            success = True  # Флаг успешности операции
+
+            # Проверяем существует ли основная служба
+            if self.check_service_exists():
+                # Останавливаем основную службу
+                stop_cmd = f'sc stop "{self.service_name}"'
+                subprocess.run(stop_cmd, shell=True, capture_output=True)
+                time.sleep(0.5)  # Даем время на остановку
                 
-            # Останавливаем службу
-            stop_cmd = f'sc stop "{self.service_name}"'
-            subprocess.run(stop_cmd, shell=True, capture_output=True)
-            time.sleep(0.1)  # Даем время на остановку
-            
-            # Удаляем службу
-            delete_cmd = f'sc delete "{self.service_name}"'
-            delete_result = subprocess.run(delete_cmd, shell=True, capture_output=True, text=True)
-            
-            if delete_result.returncode == 0:
-                # Удаляем информацию о конфигурации из реестра
-                try:
-                    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY, 0, winreg.KEY_ALL_ACCESS)
-                    winreg.DeleteValue(key, CONFIG_VALUE)
-                    winreg.CloseKey(key)
-                except FileNotFoundError:
-                    pass  # Если ключа или значения нет, игнорируем
-                except Exception as e:
-                    print(f"Ошибка при удалении конфигурации из реестра: {str(e)}")
-                
-                self.set_status("Служба успешно удалена")
-                return True
+                # Удаляем основную службу
+                delete_cmd = f'sc delete "{self.service_name}"'
+                delete_result = subprocess.run(delete_cmd, shell=True, capture_output=True, text=True)
+                if delete_result.returncode == 0:
+                    self.set_status(f"Служба {self.service_name} удалена")
+                else:
+                    error_output = delete_result.stderr.strip() if delete_result.stderr else delete_result.stdout.strip()
+                    self.set_status(f"Ошибка при удалении службы {self.service_name}: {error_output}")
+                    success = False
             else:
-                error_output = delete_result.stderr.strip() if delete_result.stderr else delete_result.stdout.strip()
-                self.set_status(f"Не удалось удалить службу: {error_output}")
-                return False
-        except Exception as e:
-            self.set_status(f"Ошибка при удалении службы: {str(e)}")
-            return False
+                self.set_status("Основная служба не найдена")
             
+            # Останавливаем и удаляем дополнительные службы
+            additional_services = ["WinDivert", "WinDivert14", "zapret", "GoodbyeDPI"]
+            for service in additional_services:
+                try:
+                    # Проверяем существует ли служба более надежным способом
+                    check_cmd = f'sc query "{service}"'
+                    check_result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
+                    
+                    # Проверяем и stdout и stderr на наличие ошибки 1060 или сообщения о том, что служба не существует
+                    service_exists = True
+                    if check_result.returncode != 0:
+                        error_text = check_result.stderr + check_result.stdout
+                        if "1060" in error_text or "не существует" in error_text.lower() or "does not exist" in error_text.lower():
+                            service_exists = False
+                    
+                    if not service_exists:
+                        # Служба не существует, пропускаем без сообщения об ошибке
+                        continue
+                    
+                    # Останавливаем службу
+                    stop_cmd = f'sc stop "{service}"'
+                    subprocess.run(stop_cmd, shell=True, capture_output=True, text=True)
+                    time.sleep(0.5)  # Даем время на остановку
+                    
+                    # Удаляем службу
+                    delete_cmd = f'sc delete "{service}"'
+                    delete_result = subprocess.run(delete_cmd, shell=True, capture_output=True, text=True)
+                    
+                    if delete_result.returncode == 0:
+                        self.set_status(f"Дополнительная служба {service} удалена")
+                except Exception as e:
+                    # Игнорируем ошибки, но выводим их в консоль для отладки
+                    print(f"DEBUG: Ошибка при обработке службы {service}: {str(e)}")
+            
+            return success
+        except Exception as e:
+            self.set_status(f"Критическая ошибка при удалении служб: {str(e)}")
+            return False
+    
     def get_current_service_config(self):
         """
         Получает текущую конфигурацию запущенной службы ZapretCensorliber из реестра
