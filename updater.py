@@ -10,6 +10,7 @@ import json
 import threading
 import tkinter as tk
 from tkinter import ttk
+from urls import *
 
 class UpdaterUI:
     def __init__(self, title="Обновление Zapret"):
@@ -287,7 +288,7 @@ def main():
         ui.update_status("Инициализация обновления...")
         
         # URL для скачивания обновления
-        download_url = "https://filedn.eu/lFS6h5cBEsru02lgr5VwkTJ/Zapret/main.exe"
+        download_url = EXE_UPDATE_URL
         
         # Скачиваем новую версию
         new_file = download_file(download_url, target_file)
