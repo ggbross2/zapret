@@ -2,6 +2,7 @@ import ctypes, sys, os
 import winreg
 import subprocess
 import webbrowser, time, shutil
+
 from PyQt5.QtCore import Qt, QPoint, QPropertyAnimation, QEasingCurve, QTimer, pyqtProperty
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QComboBox, QLabel, QSpacerItem,QSizePolicy,QHBoxLayout,QMessageBox
 from qt_material import apply_stylesheet
@@ -199,7 +200,7 @@ class LupiDPIApp(QWidget):
                             self.set_status("Скачивание скрипта обновления...")
                             bat_response = requests.get(bat_url)
                             bat_content = bat_response.text
-                            
+
                             # Заменяем переменные в BAT-файле
                             bat_content = bat_content.replace("{EXE_PATH}", exe_path)
                             bat_content = bat_content.replace("{EXE_DIR}", os.path.dirname(exe_path))
@@ -228,15 +229,15 @@ class LupiDPIApp(QWidget):
                                 updater_bat = os.path.join(os.path.dirname(exe_path), "update_zapret.bat")
                                 with open(updater_bat, 'w', encoding='utf-8') as f:
                                     f.write(f"""@echo off
-                                    @echo off
+                                    chcp 65001 > nul
                                     echo UPDATE ZAPRET!
-                                    title Old v{CURRENT_VERSION} to new v{NEW_VERSION}
+                                    title Old v{APP_VERSION} to new v{latest_version}
 
                                     echo Wait...
                                     timeout /t 3 /nobreak > nul
-                                    del /f /q "{EXE_PATH}" >nul 2>&1
+                                    del /f /q "{exe_path}" >nul 2>&1
                                     echo  Download new version...
-                                    powershell -Command "(New-Object System.Net.WebClient).DownloadFile('{EXE_UPDATE_URL}', '%TEMP%\zapret_new.exe')"
+                                    powershell -Command "(New-Object System.Net.WebClient).DownloadFile('{EXE_UPDATE_URL}', '%TEMP%\\zapret_new.exe')"
 
                                     if %ERRORLEVEL% NEQ 0 (
                                         echo Error download update!
@@ -245,24 +246,22 @@ class LupiDPIApp(QWidget):
                                     )
 
                                     echo Replace old to new version
-                                    copy /Y "%TEMP%\zapret_new.exe" "{EXE_PATH}"
+                                    copy /Y "%TEMP%\\zapret_new.exe" "{exe_path}"
 
                                     if %ERRORLEVEL% NEQ 0 (
-                                        echo Не удалось заменить файл. Проверьте права доступа.
+                                        echo "Не удалось заменить файл. Проверьте права доступа."
                                         pause
                                         exit /b 1
                                     )
 
                                     set CURRENT_DIR=%CD%
-                                    cd /d "{EXE_DIR}"
+                                    cd /d "{os.path.dirname(exe_path)}"
                                     cd /d %CURRENT_DIR%
                                     echo Del temp file...
-                                    del "%TEMP%\zapret_new.exe" >nul 2>&1
+                                    del "%TEMP%\\zapret_new.exe" >nul 2>&1
                                     echo Update done success!
                                     echo Please run Zapret (main.exe) again!
-                                    timeout /t 5 /nobreak > nul
                                     del "%~f0" >nul 2>&1
-                                    exit
                                     """)
                                                                 
                                 # Запускаем BAT-файл
@@ -368,7 +367,7 @@ class LupiDPIApp(QWidget):
         self.start_mode_combo.setCurrentText(first_strategy)
         self.start_dpi()
 
-        QTimer.singleShot(1000, self.check_for_updates)  # Проверяем через 3 секунды после запуска
+        QTimer.singleShot(3000, self.check_for_updates)  # Проверяем через 3 секунды после запуска
     
     def init_ui(self):
         """Creates the user interface elements."""
@@ -381,6 +380,7 @@ class LupiDPIApp(QWidget):
         title_label.setStyleSheet(f"{COMMON_STYLE} font: 16pt Arial;")
         header_layout.addWidget(title_label, alignment=Qt.AlignCenter)
         layout.addLayout(header_layout)
+
         # Добавляем разделитель
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
@@ -438,38 +438,32 @@ class LupiDPIApp(QWidget):
         self.autostart_disable_btn.setMinimumHeight(BUTTON_HEIGHT)
         self.autostart_disable_btn.clicked.connect(self.remove_service)
 
-        # Создаем горизонтальный контейнер для всех кнопок в первой строке
-        first_row_container = QHBoxLayout()
+        # Добавляем все кнопки напрямую в сетку вместо использования контейнеров
+        button_grid = QGridLayout()
 
-        # Добавляем кнопки запуска/остановки
-        start_stop_container = QVBoxLayout()
-        start_stop_container.addWidget(self.start_btn)
-        start_stop_container.addWidget(self.stop_btn)
-        first_row_container.addLayout(start_stop_container)
+        # Устанавливаем равномерное распределение пространства между колонками
+        button_grid.setColumnStretch(0, 1)  # Левая колонка растягивается с коэффициентом 1
+        button_grid.setColumnStretch(1, 1)  # Правая колонка растягивается с коэффициентом 1
 
-        # Добавляем кнопки автозапуска
-        autostart_container = QVBoxLayout()
-        autostart_container.addWidget(self.autostart_enable_btn)
-        autostart_container.addWidget(self.autostart_disable_btn)
-        first_row_container.addLayout(autostart_container)
+        # Добавляем кнопки напрямую в grid layout
+        button_grid.addWidget(self.start_btn, 0, 0)
+        button_grid.addWidget(self.autostart_enable_btn, 0, 1)
+        button_grid.addWidget(self.stop_btn, 0, 0)
+        button_grid.addWidget(self.autostart_disable_btn, 0, 1)
 
         # По умолчанию устанавливаем правильную видимость кнопок
         self.start_btn.setVisible(True)
         self.stop_btn.setVisible(False)
         self.autostart_enable_btn.setVisible(True)
         self.autostart_disable_btn.setVisible(False)
-
-        # Добавляем контейнер в первую строку сетки
-        button_grid.addLayout(first_row_container, 0, 0, 1, 2)
         
         # Определяем кнопки
         button_configs = [            
-            # Третья строка
-            ('Открыть Папку Zapret', self.open_folder, "0, 119, 255", 2, 0),
-            ('Добавить свои сайты', self.open_general, "0, 119, 255", 2, 1),
-            
-            ('Разблокировать ChatGPT, Spotify, Notion и др.', self.some_method_that_calls_add_proxy_domains, "218, 165, 32", 3, 0, 2),  # col_span=2
-            ('Тест соединения', self.open_connection_test, "0, 119, 255", 4, 0, 2),  # col_span=2
+            ('Открыть папку Zapret', self.open_folder, "0, 119, 255", 2, 0),
+            ('Тест соединения', self.open_connection_test, "0, 119, 255", 2, 1),
+            ('Обновить список сайтов', self.update_other_list, "0, 119, 255", 3, 0),
+            ('Добавить свои сайты', self.open_general, "0, 119, 255", 3, 1),
+            ('Разблокировать ChatGPT, Spotify, Notion и др.', self.some_method_that_calls_add_proxy_domains, "218, 165, 32", 4, 0, 2),  # col_span=2
             ('Что это такое?', self.open_info, "38, 38, 38", 5, 0, 2),
             ('Проверить обновления', self.check_for_updates, "38, 38, 38", 6, 0, 2)  # col_span=2
         ]
@@ -479,7 +473,7 @@ class LupiDPIApp(QWidget):
             text, callback, color, row, col = button_info[:5]
             
             # Определяем col_span (либо из кортежа, либо по умолчанию)
-            col_span = button_info[5] if len(button_info) > 5 else (2 if (row == 3 or row == 4 or row == 5 or row == 6) else 1)
+            col_span = button_info[5] if len(button_info) > 5 else (2 if (row == 4 or row == 5 or row == 6) else 1)
             
             btn = RippleButton(text, self, color)
             btn.setStyleSheet(BUTTON_STYLE.format(color))
@@ -532,7 +526,7 @@ class LupiDPIApp(QWidget):
 
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(self.check_process_status)
-        self.status_timer.start(1000)  # Проверка каждые 1 секунды
+        self.status_timer.start(2000)  # Проверка каждые 1 секунды
 
     def change_theme(self, theme_name):
         """Changes the application's theme."""
@@ -599,21 +593,13 @@ class LupiDPIApp(QWidget):
 
     def start_dpi(self):
         """Запускает DPI с текущей конфигурацией, если служба ZapretCensorliber не установлена"""
-        # Проверяем наличие службы ZapretCensorliber
-        check_cmd = 'sc query "ZapretCensorliber"'
-        result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
-        service_found = False
-        if result.returncode == 0:
-            service_found = True
-        elif "1060" not in result.stderr and "1060" not in result.stdout:
-            # Если код ошибки не содержит 1060 (служба не найдена)
-            service_found = True
-
+        # Используем существующий метод проверки службы из ServiceManager
+        service_found = self.service_manager.check_service_exists()
+        
         if service_found:
-            QMessageBox.warning(self, "Оповещение",
-                                "Автоматический запуск при смене стратегии невозможен, так как служба ZapretCensorliber установлена.")
+            # При необходимости здесь можно показать предупреждение
             return
-
+            
         # Если службы нет, запускаем DPI
         selected_mode = self.start_mode_combo.currentText()
         success = self.dpi_starter.start_dpi(selected_mode, DPI_COMMANDS, DOWNLOAD_URLS)
@@ -693,26 +679,29 @@ class LupiDPIApp(QWidget):
     ################################# ПРОВЕРЯТЬ ЗАПУЩЕН ЛИ ПРОЦЕСС #################################
     def check_process_status(self):
         """Проверяет статус процесса и обновляет UI"""
+        # Запоминаем текущее состояние
+        previous_running = self.process_status_value.text() == "ВКЛЮЧЕН"
+        previous_service = self.autostart_disable_btn.isVisible()
+        
         # Проверяем статус службы
         service_running = self.service_manager.check_service_exists()
-        self.update_autostart_ui(service_running)  # Исправлено: используем update_autostart_ui вместо update_ui
         
         # Проверяем статус процесса
-        if self.dpi_starter.check_process_running():
-            self.process_status_value.setText("ВКЛЮЧЕН")
-            self.process_status_value.setStyleSheet("color: green; font-weight: bold;")
-            self.update_ui(running=True)
-            
-            # Проверяем наличие службы
-            current_config = self.service_manager.get_current_service_config()  # Убрали аргумент dpi_commands
-            if service_running:
-                self.set_status(f"Служба запущена со стратегией: {current_config}")
+        process_running = self.dpi_starter.check_process_running()
+        
+        # Обновляем UI только если состояние изменилось
+        if previous_service != service_running:
+            self.update_autostart_ui(service_running)
+        
+        if previous_running != process_running:
+            if process_running:
+                self.process_status_value.setText("ВКЛЮЧЕН")
+                self.process_status_value.setStyleSheet("color: green; font-weight: bold;")
+                self.update_ui(running=True)
             else:
-                self.set_status("Zapret запущен")
-        else:
-            self.process_status_value.setText("ВЫКЛЮЧЕН")
-            self.process_status_value.setStyleSheet("color: red; font-weight: bold;")
-            self.update_ui(running=False)
+                self.process_status_value.setText("ВЫКЛЮЧЕН")
+                self.process_status_value.setStyleSheet("color: red; font-weight: bold;")
+                self.update_ui(running=False)
 
     ################################# hosts #################################
     def some_method_that_calls_add_proxy_domains(self):
@@ -740,8 +729,94 @@ class LupiDPIApp(QWidget):
             error_msg = f"Ошибка при запуске тестирования: {str(e)}"
             print(error_msg)
             self.set_status(error_msg)
+            
+    ################################# other update #################################
+    def update_other_list(self):
+        """Обновляет файл списка other.txt с удаленного сервера"""
+        try:
+            self.set_status("Обновление списка доменов...")
+            
+            # Проверка наличия модуля requests
+            try:
+                import requests
+            except ImportError:
+                self.set_status("Установка зависимостей...")
+                subprocess.run([sys.executable, "-m", "pip", "install", "requests"], 
+                            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                import requests
+            
+            # Путь к локальному файлу
+            other_path = os.path.join(LISTS_FOLDER, 'other.txt')
+            
+            # Создаем директорию, если она не существует
+            os.makedirs(os.path.dirname(other_path), exist_ok=True)
+            
+            # Скачиваем файл с сервера
+            self.set_status("Загрузка списка доменов...")
+            response = requests.get(OTHER_LIST_URL, timeout=10)
+            
+            if response.status_code == 200:
+                # Обрабатываем полученное содержимое
+                domains = []
+                for line in response.text.splitlines():
+                    line = line.strip()  # Удаляем пробелы в начале и конце строки
+                    if line:  # Пропускаем пустые строки
+                        domains.append(line)
+                
+                # Собираем все домены в один текст, каждый на новой строке БЕЗ пустых строк
+                downloaded_content = "\n".join(domains)
+                
+                # Читаем текущий файл, если он существует
+                current_content = ""
+                if os.path.exists(other_path):
+                    with open(other_path, 'r', encoding='utf-8') as f:
+                        # Также обрабатываем существующее содержимое
+                        current_domains = []
+                        for line in f:
+                            line = line.strip()
+                            if line:
+                                current_domains.append(line)
+                        current_content = "\n".join(current_domains)
+                
+                # Если файла нет или содержимое отличается
+                if not os.path.exists(other_path) or current_content != downloaded_content:
+                    # Делаем резервную копию текущего файла
+                    if os.path.exists(other_path):
+                        backup_path = other_path + '.bak'
+                        shutil.copy2(other_path, backup_path)
+                    
+                    # Сохраняем новый файл (без пустых строк)
+                    with open(other_path, 'w', encoding='utf-8') as f:
+                        f.write(downloaded_content)
+                        
+                    self.set_status("Список успешно обновлен")
+                    QMessageBox.information(self, "Успешно", "Список доменов успешно обновлен")
+                else:
+                    self.set_status("Список уже актуален")
+                    QMessageBox.information(self, "Информация", "Список доменов уже актуален")
+            else:
+                self.set_status(f"Ошибка при загрузке списка доменов: {response.status_code}")
+                QMessageBox.warning(self, "Ошибка", f"Не удалось получить список доменов с сервера. Код ответа: {response.status_code}")
+                
+        except Exception as e:
+            error_msg = f"Ошибка при обновлении списка доменов: {str(e)}"
+            print(error_msg)
+            self.set_status(error_msg)
+            QMessageBox.critical(self, "Ошибка", error_msg)
 
-import zipimport
+    def moveEvent(self, event):
+        """Вызывается при перемещении окна"""
+        # Временно останавливаем таймер
+        was_active = self.status_timer.isActive()
+        if was_active:
+            self.status_timer.stop()
+        
+        # Выполняем стандартную обработку события
+        super().moveEvent(event)
+        
+        # Перезапускаем таймер после небольшой задержки
+        if was_active:
+            QTimer.singleShot(200, lambda: self.status_timer.start())
 
 def check_if_in_archive():
     """
