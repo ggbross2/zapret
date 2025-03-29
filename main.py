@@ -1,20 +1,56 @@
-import ctypes, sys, os
-import winreg
-import subprocess
-import webbrowser, time, shutil
+import ctypes, sys, os, winreg, subprocess, webbrowser, time, shutil
 
 from PyQt5.QtCore import Qt, QPoint, QPropertyAnimation, QEasingCurve, QTimer, pyqtProperty
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QComboBox, QLabel, QSpacerItem,QSizePolicy,QHBoxLayout,QMessageBox
-from qt_material import apply_stylesheet
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QComboBox, QLabel, QSpacerItem, QSizePolicy, QHBoxLayout, QMessageBox, QFrame
 from PyQt5.QtGui import QPainter, QColor
-from PyQt5.QtWidgets import QFrame
 
-from downloader import download_files, DOWNLOAD_URLS
+from downloader import DOWNLOAD_URLS
 from config import DPI_COMMANDS, APP_VERSION, BIN_FOLDER, LISTS_FOLDER
 from hosts import HostsManager
 from service import ServiceManager
 from start import DPIStarter
+from discord import DiscordManager
 from urls import *
+
+# Добавляем функции для работы с реестром
+def get_discord_restart_setting():
+    """Получает настройку автоматического перезапуска Discord из реестра"""
+    try:
+        registry = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Zapret"
+        )
+        value, _ = winreg.QueryValueEx(registry, "AutoRestartDiscord")
+        winreg.CloseKey(registry)
+        return bool(value)
+    except:
+        # По умолчанию включено
+        return True
+    
+def set_discord_restart_setting(enabled):
+    """Сохраняет настройку автоматического перезапуска Discord в реестр"""
+    try:
+        # Пытаемся открыть ключ, если его нет - создаем
+        try:
+            registry = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Zapret",
+                0, 
+                winreg.KEY_WRITE
+            )
+        except:
+            registry = winreg.CreateKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Zapret"
+            )
+        
+        # Записываем значение
+        winreg.SetValueEx(registry, "AutoRestartDiscord", 0, winreg.REG_DWORD, int(enabled))
+        winreg.CloseKey(registry)
+        return True
+    except Exception as e:
+        print(f"Ошибка при сохранении настройки: {str(e)}")
+        return False
 
 def is_admin():
     try:
@@ -64,12 +100,13 @@ THEMES = {
 
 class RippleButton(QPushButton):
     def __init__(self, text, parent=None, color=""):
+        self.manually_stopped = False  # Флаг для отслеживания намеренной остановки
         super().__init__(text, parent)
         self._ripple_pos = QPoint()
         self._ripple_radius = 0
         self._ripple_opacity = 0
         self._bgcolor = color
-
+        
         # Настройка анимаций
         self._ripple_animation = QPropertyAnimation(self, b"rippleRadius", self)
         self._ripple_animation.setDuration(300)
@@ -273,22 +310,33 @@ class LupiDPIApp(QWidget):
                             except Exception as inner_e:
                                 self.set_status(f"Критическая ошибка обновления: {str(inner_e)}")
                     else:
-                        self.set_status("У вас установлена последняя версия.")
+                        self.set_status(f"У вас установлена последняя версия ({latest_version}).")
                 else:
-                    self.set_status("У вас установлена последняя версия.")
+                    self.set_status(f"У вас установлена последняя версия ({latest_version}).")
             else:
-                self.set_status(f"Не удалось проверить обновления. Код: {response.status_code}")
+                self.set_status(f"Не удалось проверить обновления.\nКод: {response.status_code}")
         except Exception as e:
-            self.set_status(f"Ошибка при проверке обновлений: {str(e)}")
+            self.set_status(f"Ошибка при проверке обновлений:\n{str(e)}")
     
     def download_files_wrapper(self):
         """Обертка для скачивания файлов, использующая внешнюю функцию"""
         return self.dpi_starter.download_files(DOWNLOAD_URLS)
 
     def __init__(self):
+        # Инициализируем переменную для секретного ввода
+        self._secret_input = ""
+
         """Initializes the application window."""
         super().__init__()
         self.setWindowTitle(f'Zapret v{APP_VERSION}')  # Добавляем версию в заголовок
+
+        # Проверяем настройку автоперезапуска Discord
+        self.discord_auto_restart = get_discord_restart_setting()
+        
+        # Инициализируем Discord Manager
+        self.discord_manager = DiscordManager(status_callback=self.set_status)
+        self.first_start = True  # Флаг для отслеживания первого запуска
+        
 
         # Устанавливаем иконку приложения
         icon_path = os.path.abspath(ICON_PATH)  # Используем абсолютный путь
@@ -337,6 +385,7 @@ class LupiDPIApp(QWidget):
         # После обновления видимости кнопок автозапуска обновляем состояние запуска
         self.update_ui(running=True)
 
+        from qt_material import apply_stylesheet
         # Настраиваем тему
         self.theme_combo.setCurrentText(default_theme)
         theme_info = THEMES[default_theme]
@@ -403,12 +452,11 @@ class LupiDPIApp(QWidget):
         status_layout.addLayout(process_status_layout)
 
         layout.addLayout(status_layout)
-        
-        # Остальные элементы интерфейса
+
         self.start_mode_combo = QComboBox(self)
         self.start_mode_combo.setStyleSheet(f"{COMMON_STYLE} text-align: center;")
         self.start_mode_combo.addItems(DPI_COMMANDS.keys())
-        self.start_mode_combo.currentTextChanged.connect(self.start_dpi)  # Добавляем обработчик
+        self.start_mode_combo.currentTextChanged.connect(self.on_mode_changed)
         layout.addWidget(self.start_mode_combo)
 
         # --- Создаем сетку для размещения кнопок в два столбца ---
@@ -528,6 +576,17 @@ class LupiDPIApp(QWidget):
         self.status_timer.timeout.connect(self.check_process_status)
         self.status_timer.start(2000)  # Проверка каждые 1 секунды
 
+    def on_mode_changed(self, selected_mode):
+        """Обработчик смены режима в combobox"""
+        # Перезапускаем Discord только если это не первый запуск
+        if not self.first_start:
+            self.discord_manager.restart_discord_if_running()
+        else:
+            self.first_start = False  # Сбрасываем флаг первого запуска
+        
+        # Запускаем DPI с новым режимом
+        self.start_dpi()
+
     def change_theme(self, theme_name):
         """Changes the application's theme."""
         if theme_name == "РКН Тян":
@@ -543,6 +602,8 @@ class LupiDPIApp(QWidget):
             
         if theme_name in THEMES:
             try:
+                from qt_material import apply_stylesheet
+                # Получаем информацию о теме
                 theme_info = THEMES[theme_name]
                 # Применяем тему
                 apply_stylesheet(QApplication.instance(), theme=theme_info["file"])
@@ -579,9 +640,12 @@ class LupiDPIApp(QWidget):
             subprocess.Popen('explorer.exe .', shell=True)
         except Exception as e:
             self.set_status(f"Ошибка при открытии папки: {str(e)}")
-
+    
     def stop_dpi(self):
         """Останавливает процесс DPI."""
+        # Устанавливаем флаг намеренной остановки
+        self.manually_stopped = True
+        
         if self.dpi_starter.stop_dpi():
             self.update_ui(running=False)
         else:
@@ -606,23 +670,28 @@ class LupiDPIApp(QWidget):
         if success:
             self.update_ui(running=True)
             # Проверяем, не завершился ли процесс сразу после запуска
-            QTimer.singleShot(1500, self.check_if_process_started_correctly)
+            QTimer.singleShot(3000, self.check_if_process_started_correctly)
         else:
             self.check_process_status()  # Обновляем статус в интерфейсе
 
     def check_if_process_started_correctly(self):
         """Проверяет, что процесс успешно запустился и продолжает работать"""
-        if not self.dpi_starter.check_process_running():
-            # Если процесс не запущен через 1.5 секунды после старта, показываем ошибку
-            QMessageBox.critical(self, "Ошибка запуска", 
-                                "Процесс winws.exe запустился, но затем неожиданно завершился.\n\n"
-                                "Это может быть вызвано:\n"
-                                "1. Недостаточными правами администратора\n"
-                                "2. Блокировкой антивирусом\n"
-                                "3. Конфликтом с другим программным обеспечением\n\n"
-                                "Запустите программу от имени администратора или создайте исключение в антивирусе.")
-            self.update_ui(running=False)
+        # Предотвращаем показ ошибки, если процесс был остановлен намеренно
+        if hasattr(self, 'manually_stopped') and self.manually_stopped:
+            self.manually_stopped = False  # Сбрасываем флаг
+            return
             
+        if not self.dpi_starter.check_process_running():
+            # Если процесс не запущен через 3 секунды после старта, показываем ошибку
+            QMessageBox.critical(self, "Ошибка запуска", 
+                            "Процесс winws.exe запустился, но затем неожиданно завершился.\n\n"
+                            "Это может быть вызвано:\n"
+                            "1. Блокировкой антивирусом\n"
+                            "2. Конфликтом с другим программным обеспечением\n"
+                            f"3. Какие-то файлы удалены из программы\n\n"
+                            "Создайте исключение в антивирусе.")
+            self.update_ui(running=False)
+        
         # В любом случае обновляем статус
         self.check_process_status()
         
@@ -818,6 +887,83 @@ class LupiDPIApp(QWidget):
         if was_active:
             QTimer.singleShot(200, lambda: self.status_timer.start())
 
+    def keyPressEvent(self, event):
+        """Обрабатывает нажатия клавиш для секретных команд"""
+        # Добавляем символ к секретной последовательности
+        key_text = event.text().lower()
+        self._secret_input += key_text
+        
+        # Добавим отладочную информацию
+        print(f"Введено: {key_text}, Буфер: {self._secret_input}")
+        
+        # Проверяем наличие секретного слова "ркн" (русские буквы)
+        if "ркн" in self._secret_input:
+            print("Секретный код обнаружен! Переключаем настройку Discord")
+            self._secret_input = ""  # Сбрасываем буфер
+            self.toggle_discord_restart()
+            # Предотвращаем дальнейшую обработку события
+            return
+        
+        # Ограничиваем длину строки
+        if len(self._secret_input) > 20:
+            self._secret_input = self._secret_input[-10:]
+        
+        # Стандартная обработка события
+        super().keyPressEvent(event)
+
+    def toggle_discord_restart(self):
+        """Переключает настройку автоматического перезапуска Discord"""
+        current_setting = get_discord_restart_setting()
+        
+        # Показываем диалог подтверждения
+        if current_setting:
+            # Если сейчас включено, предлагаем выключить
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Warning)
+            msg.setWindowTitle("Отключение автоперезапуска Discord")
+            msg.setText("Вы действительно хотите отключить автоматический перезапуск Discord?")
+            
+            msg.setInformativeText(
+                "Если вы отключите эту функцию, вам придется самостоятельно перезапускать "
+                "Discord после смены стратегии обхода блокировок.\n\n"
+                "Это может привести к проблемам с подключением к голосовым каналам и "
+                "нестабильной работе Discord.\n\n"
+                "Вы понимаете последствия своих действий?"
+            )
+            
+            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            choice = msg.exec_()
+            
+            if choice == QMessageBox.Yes:
+                # Отключаем автоперезапуск
+                set_discord_restart_setting(False)
+                self.discord_auto_restart = False
+                self.set_status("Автоматический перезапуск Discord отключен")
+                QMessageBox.information(self, "Настройка изменена", 
+                                    "Автоматический перезапуск Discord отключен.\n\n"
+                                    "Теперь вам нужно будет самостоятельно перезапускать Discord "
+                                    "после смены стратегии обхода блокировок.")
+        else:
+            # Включаем автоперезапуск (без дополнительного подтверждения)
+            set_discord_restart_setting(True)
+            self.discord_auto_restart = True
+            self.set_status("Автоматический перезапуск Discord включен")
+            QMessageBox.information(self, "Настройка изменена", 
+                                "Автоматический перезапуск Discord снова включен.")
+    
+    def on_mode_changed(self, selected_mode):
+        """Обработчик смены режима в combobox"""
+        # Перезапускаем Discord только если:
+        # 1. Это не первый запуск
+        # 2. Автоперезапуск включен в настройках
+        if not self.first_start and self.discord_auto_restart:
+            self.discord_manager.restart_discord_if_running()
+        else:
+            self.first_start = False  # Сбрасываем флаг первого запуска
+        
+        # Запускаем DPI с новым режимом
+        self.start_dpi()
+
 def check_if_in_archive():
     """
     Проверяет, находится ли EXE-файл в временной директории,
@@ -840,6 +986,30 @@ def check_if_in_archive():
     except Exception as e:
         print(f"DEBUG: Ошибка при проверке расположения EXE: {str(e)}")
         return False
+
+def contains_special_chars(path):
+    """Проверяет, содержит ли путь специальные символы"""
+    special_chars = '()[]{}^=;!\'"+<>|&'
+    return any(c in path for c in special_chars)
+
+def check_path_for_special_chars():
+    """Проверяет пути программы на наличие специальных символов"""
+    current_path = os.path.abspath(os.getcwd())
+    exe_path = os.path.abspath(sys.executable)
+    
+    paths_to_check = [current_path, exe_path, BIN_FOLDER, LISTS_FOLDER]
+    
+    for path in paths_to_check:
+        if contains_special_chars(path):
+            error_message = (
+                f"Путь содержит специальные символы: {path}\n\n"
+                "Программа не может корректно работать в папке со специальными символами (цифры, точки, скобки, запятые и т.д.).\n"
+                "Пожалуйста, переместите программу в папку без специальных символов в пути (например, C:\\zapretgui) и запустите её снова."
+            )
+            QMessageBox.critical(None, "Критическая ошибка", error_message)
+            print(f"ERROR: Путь содержит специальные символы: {path}")
+            return True
+    return False
 
 def main():
     if len(sys.argv) > 1:
@@ -877,13 +1047,20 @@ def main():
     
     # Стандартный запуск
     app = QApplication(sys.argv)
-    
+
+    # Проверка на запуск из временной директории
     if check_if_in_archive():
         error_message = (
             "Приложение не может быть запущено из временной директории!\n\n"
             "Пожалуйста, распакуйте архив полностью в отдельную папку и запустите программу."
         )
         QMessageBox.critical(None, "Ошибка запуска", error_message)
+        print("ERROR: Ошибка check_if_in_archive")
+        sys.exit(1)
+    
+    # Проверка на специальные символы в пути
+    if check_path_for_special_chars():
+        # Функция уже показывает сообщение об ошибке, просто выходим
         sys.exit(1)
     
     # Далее создаем и запускаем основное окно
