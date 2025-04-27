@@ -1,7 +1,7 @@
-import os
 import subprocess
 import time, winreg
-from config import DPI_COMMANDS
+
+import winreg
 
 # Константы для работы с реестром
 REGISTRY_KEY = r"SOFTWARE\Zapret"
@@ -40,7 +40,7 @@ def get_config_from_registry():
         return None
 
 class ServiceManager:
-    def __init__(self, winws_exe, bin_folder, lists_folder, status_callback=None, service_name="ZapretCensorliber"):
+    def __init__(self, winws_exe, bin_folder, lists_folder, status_callback=None, ui_callback=None, service_name="ZapretCensorliber"):
         """
         Инициализирует менеджер служб.
         
@@ -55,6 +55,7 @@ class ServiceManager:
         self.bin_folder = bin_folder
         self.lists_folder = lists_folder
         self.status_callback = status_callback
+        self.ui_callback = ui_callback
         self.service_name = service_name
     
     def set_status(self, text):
@@ -65,199 +66,377 @@ class ServiceManager:
             print(text)
     
     def check_service_exists(self):
-        """Проверяет существует ли служба"""
-        check_cmd = f'sc query "{self.service_name}"'
-        check_result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
-        return check_result.returncode == 0
-
-    def install_service(self, command_args, config_name=""):
         """
-        Устанавливает службу Windows для автоматического запуска DPI.
+        Проверяет наличие автозапуска (обратная совместимость)
+        
+        Returns:
+            bool: True если автозапуск настроен через любой метод, иначе False
+        """
+        # Просто делегируем вызов новому методу для обеспечения обратной совместимости
+        return self.check_autostart_exists()
+
+    def install_autostart_registry(self, selected_mode=None):
+        """
+        Настраивает автозапуск приложения через ярлык в реестре Windows
         
         Args:
-            command_args (list): Аргументы командной строки для winws.exe
-            config_name (str, optional): Имя конфигурации для отображения в сообщениях
-            
+            selected_mode (str): Выбранная стратегия обхода блокировок
+        
         Returns:
-            bool: True если служба успешно установлена, False в случае ошибки
+            bool: True если автозапуск успешно настроен, иначе False
         """
         try:
-            # Если command_args переданы как строка, разбиваем на список
-            if isinstance(command_args, str):
-                command_args = command_args.split()
-
-            # Проверяем путь на наличие пробелов
-            current_path = os.path.dirname(os.path.abspath(self.winws_exe))
-            if " " in current_path:
-                error_msg = (
-                    "Ошибка: Невозможно установить службу, так как путь к программе содержит пробелы:\n"
-                    f"{current_path}\n\n"
-                    "Пожалуйста, переместите программу в папку без пробелов в пути "
-                    "(например, в корень диска C:\\Zapret) и повторите попытку."
-                )
-                self.set_status("Ошибка: Путь содержит пробелы")
-                
-                # Используем QMessageBox для вывода сообщения
-                from PyQt5.QtWidgets import QMessageBox
-                msg_box = QMessageBox()
-                msg_box.setIcon(QMessageBox.Warning)
-                msg_box.setWindowTitle("Ошибка пути")
-                msg_box.setText(error_msg)
-                msg_box.exec_()
-                
-                return False
-                
-            # Проверяем существует ли служба
-            if self.check_service_exists():
-                self.set_status("Служба уже существует. Удаление...")
-                stop_cmd = f'sc stop "{self.service_name}"'
-                subprocess.run(stop_cmd, shell=True, capture_output=True)
-                time.sleep(0.1)
-                delete_cmd = f'sc delete "{self.service_name}"'
-                delete_result = subprocess.run(delete_cmd, shell=True, capture_output=True, text=True)
-                if delete_result.returncode != 0:
-                    self.set_status("Не удалось удалить существующую службу")
-                time.sleep(0.1)
-
-            exe_path = os.path.abspath(self.winws_exe)
-            processed_args = []
-            for arg in command_args:
-                if ".txt" in arg or ".bin" in arg:
-                    if "=" in arg:
-                        prefix, filename = arg.split("=", 1)
-                        if ".txt" in filename:
-                            full_path = os.path.join(os.path.abspath(self.lists_folder), os.path.basename(filename))
-                            processed_args.append(f"{prefix}={full_path}")
-                        elif ".bin" in filename:
-                            full_path = os.path.join(os.path.abspath(self.bin_folder), os.path.basename(filename))
-                            processed_args.append(f"{prefix}={full_path}")
-                        else:
-                            processed_args.append(arg)
-                    else:
-                        processed_args.append(arg)
-                else:
-                    processed_args.append(arg)
-
-            args_str = " ".join(processed_args)
-            service_command = f'"{exe_path}" {args_str}'
-
-            # Создаем службу без описания
-            create_cmd = (
-                f'sc create "{self.service_name}" type= own binPath= "{service_command}" '
-                f'start= auto DisplayName= "{self.service_name}"'
+            from log import log
+            import sys, os
+            import pythoncom
+            from win32com.client import Dispatch
+            
+            # Пути к exe и директории
+            exe_path = sys.executable
+            exe_dir = os.path.dirname(exe_path)
+            
+            # Создаем путь для ярлыка в папке пользователя
+            shortcut_path = os.path.join(
+                os.path.expanduser("~"), 
+                "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", 
+                "Programs", "Startup", "ZapretGUI.lnk"
             )
-            print(f"DEBUG: Service command: {create_cmd}")
-            create_result = subprocess.run(create_cmd, shell=True, capture_output=True, text=True)
-            if create_result.returncode == 0:
-                # Устанавливаем описание службы отдельной командой
-                desc_cmd = f'sc description "{self.service_name}" "Служба для работы Zapret DPI https://t.me/bypassblock"'
-                subprocess.run(desc_cmd, shell=True, capture_output=True, text=True)
-                
-                # Сохраняем конфигурацию в реестр
-                save_config_to_registry(config_name if config_name else "Пользовательская")
-                subprocess.run("taskkill /IM winws.exe /F", shell=True, check=False)
-                time.sleep(0.1)
-                # Запускаем службу
-                start_cmd = f'sc start "{self.service_name}"'
-                start_result = subprocess.run(start_cmd, shell=True, capture_output=True, text=True)
-                if start_result.returncode == 0:
-                    self.set_status(f"Служба установлена и запущена\nКонфиг: {config_name}\nСМЕНИТЬ СТРАТЕГИЮ ВО ВРЕМЯ СЛУЖБЫ НЕЛЬЗЯ!")
-                    return True
-                else:
-                    self.set_status("Служба создана, но не удалось запустить её")
-                    return False
-            else:
-                error_output = create_result.stderr.strip() if create_result.stderr else create_result.stdout.strip()
-                self.set_status(f"Ошибка при создании службы: {error_output}")
-                return False
-        except Exception as e:
-            self.set_status(f"Ошибка при установке службы: {str(e)}")
-            return False
-        
-    def remove_service(self):
-        """
-        Удаляет службу ZapretCensorliber и другие связанные службы.
-        
-        Returns:
-            bool: True если служба успешно удалена, False в случае ошибки
-        """
-        try:
-            success = True  # Флаг успешности операции
-
-            # Проверяем существует ли основная служба
-            if self.check_service_exists():
-                # Останавливаем основную службу
-                stop_cmd = f'sc stop "{self.service_name}"'
-                subprocess.run(stop_cmd, shell=True, capture_output=True)
-                time.sleep(0.5)  # Даем время на остановку
-                
-                # Удаляем основную службу
-                delete_cmd = f'sc delete "{self.service_name}"'
-                delete_result = subprocess.run(delete_cmd, shell=True, capture_output=True, text=True)
-                if delete_result.returncode == 0:
-                    self.set_status(f"Служба {self.service_name} удалена")
-                else:
-                    error_output = delete_result.stderr.strip() if delete_result.stderr else delete_result.stdout.strip()
-                    self.set_status(f"Ошибка при удалении службы {self.service_name}: {error_output}")
-                    success = False
-            else:
-                self.set_status("Основная служба не найдена")
             
-            # Останавливаем и удаляем дополнительные службы
-            additional_services = ["WinDivert", "WinDivert14", "zapret", "GoodbyeDPI"]
-            for service in additional_services:
-                try:
-                    # Проверяем существует ли служба более надежным способом
-                    check_cmd = f'sc query "{service}"'
-                    check_result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
-                    
-                    # Проверяем и stdout и stderr на наличие ошибки 1060 или сообщения о том, что служба не существует
-                    service_exists = True
-                    if check_result.returncode != 0:
-                        error_text = check_result.stderr + check_result.stdout
-                        if "1060" in error_text or "не существует" in error_text.lower() or "does not exist" in error_text.lower():
-                            service_exists = False
-                    
-                    if not service_exists:
-                        # Служба не существует, пропускаем без сообщения об ошибке
-                        continue
-                    
-                    # Останавливаем службу
-                    stop_cmd = f'sc stop "{service}"'
-                    subprocess.run(stop_cmd, shell=True, capture_output=True, text=True)
-                    time.sleep(0.5)  # Даем время на остановку
-                    
-                    # Удаляем службу
-                    delete_cmd = f'sc delete "{service}"'
-                    delete_result = subprocess.run(delete_cmd, shell=True, capture_output=True, text=True)
-                    
-                    if delete_result.returncode == 0:
-                        self.set_status(f"Дополнительная служба {service} удалена")
-                except Exception as e:
-                    # Игнорируем ошибки, но выводим их в консоль для отладки
-                    print(f"DEBUG: Ошибка при обработке службы {service}: {str(e)}")
+            # Создаем директорию, если она не существует
+            os.makedirs(os.path.dirname(shortcut_path), exist_ok=True)
             
-            return success
+            # Создаем ярлык
+            shell = Dispatch('WScript.Shell')
+            shortcut = shell.CreateShortCut(shortcut_path)
+            shortcut.Targetpath = exe_path
+            shortcut.Arguments = "--tray"
+            shortcut.WorkingDirectory = exe_dir
+            shortcut.WindowStyle = 7  # 7 = Minimized
+            shortcut.save()
+            
+            # Сохраняем выбранную стратегию в реестр
+            if selected_mode:
+                # Создаем ключ Zapret, если он не существует
+                reg_key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Software\\Zapret")
+                # Сохраняем стратегию
+                winreg.SetValueEx(reg_key, "LastStrategy", 0, winreg.REG_SZ, selected_mode)
+                winreg.CloseKey(reg_key)
+            
+            log(f"Автозапуск настроен через ярлык: {shortcut_path}", level="INFO")
+            self.set_status("Автозапуск успешно настроен")
+            return True
+            
         except Exception as e:
-            self.set_status(f"Критическая ошибка при удалении служб: {str(e)}")
+            from log import log
+            log(f"Ошибка при настройке автозапуска: {str(e)}", level="ERROR")
+            self.set_status(f"Ошибка: {str(e)}")
             return False
     
-    def get_current_service_config(self):
+    def check_autostart_registry_exists(self):
         """
-        Получает текущую конфигурацию запущенной службы ZapretCensorliber из реестра
+        Проверяет, настроен ли автозапуск приложения через реестр Windows
         
         Returns:
-            str: Имя стратегии или None, если службы нет или не удалось определить
+            bool: True если автозапуск настроен, иначе False
         """
         try:
-            # Проверяем существование службы
-            if not self.check_service_exists():
-                return None  # Служба не существует
+            # Открываем ключ автозапуска в реестре
+            key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
+                # Пытаемся прочитать значение
+                value, _ = winreg.QueryValueEx(key, "ZapretGUI")
+                
+                # Если значение существует и содержит путь к exe, автозапуск настроен
+                return value and (".exe" in value.lower())
+        
+        except FileNotFoundError:
+            # Ключ или значение не найдены
+            return False
+        except Exception as e:
+            from log import log
+            log(f"Ошибка при проверке автозапуска: {str(e)}", level="ERROR")
+            return False
+
+    def remove_autostart_registry(self):
+        """
+        Удаляет автозапуск приложения из реестра Windows и удаляет ярлык из папки автозапуска
+        
+        Returns:
+            bool: True если автозапуск успешно удален, иначе False
+        """
+        try:
+            from log import log
+            import os
+            
+            # 1. Удаляем запись из реестра
+            key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE) as key:
+                # Удаляем значение
+                try:
+                    winreg.DeleteValue(key, "ZapretGUI")
+                    log("Автозапуск удален из реестра", level="INFO")
+                except FileNotFoundError:
+                    # Значение уже удалено
+                    pass
+                
+            # 2. Удаляем ярлык из папки автозапуска
+            shortcut_path = os.path.join(
+                os.path.expanduser("~"), 
+                "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", 
+                "Programs", "Startup", "ZapretGUI.lnk"
+            )
+            
+            if os.path.exists(shortcut_path):
+                try:
+                    os.remove(shortcut_path)
+                    log(f"Ярлык автозапуска удален: {shortcut_path}", level="INFO")
+                except Exception as e:
+                    log(f"Не удалось удалить ярлык автозапуска: {str(e)}", level="WARNING")
+                    # Продолжаем выполнение - это не критическая ошибка
+            
+            self.set_status("Автозапуск успешно удален")
+            return True
+            
+        except Exception as e:
+            from log import log
+            log(f"Ошибка при удалении автозапуска: {str(e)}", level="ERROR")
+            self.set_status(f"Ошибка: {str(e)}")
+            return False
+    
+    def install_autostart_by_strategy(
+            self,
+            selected_mode: str,
+            strategy_manager=None,
+            index_path=None) -> bool:
+        """
+        Устанавливает автозапуск через реестр Windows
+        
+        Args:
+            selected_mode (str): Выбранная стратегия
+            strategy_manager: Менеджер стратегий (для совместимости)
+            index_path: Путь к индексу (для совместимости)
+        
+        Returns:
+            bool: True если успешно, иначе False
+        """
+        try:
+            from log import log
+            
+            # Удаляем старую задачу планировщика и службу, если они есть
+            self.remove_service()
+            
+            # Устанавливаем автозапуск через реестр
+            result = self.install_autostart_registry(selected_mode)
+            
+            if result:
+                log(f"Автозапуск для стратегии '{selected_mode}' настроен через реестр", level="INFO")
+                
+            return result
+        except Exception as e:
+            from log import log
+            log(f"Ошибка при настройке автозапуска: {str(e)}", level="ERROR")
+            self.set_status(f"Ошибка: {str(e)}")
+            return False
+
+    def check_autostart_exists(self):
+        """
+        Проверяет наличие автозапуска через любой метод
+        (реестр, ярлык, планировщик или службу Windows)
+        
+        Returns:
+            bool: True если автозапуск настроен, иначе False
+        """
+        import os
+        
+        # Проверяем наличие ярлыка в папке автозапуска
+        shortcut_path = os.path.join(
+            os.path.expanduser("~"), 
+            "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", 
+            "Programs", "Startup", "ZapretGUI.lnk"
+        )
+        if os.path.exists(shortcut_path):
+            return True
+        
+        # Сначала проверяем реестр (новый метод)
+        if self.check_autostart_registry_exists():
+            return True
+            
+        # Затем проверяем планировщик задач (устаревший метод)
+        if self.check_scheduler_task_exists():
+            return True
+            
+        # Наконец, проверяем службу Windows (самый устаревший метод)
+        return self.check_windows_service_exists()
+
+    
+    def check_scheduler_task_exists(self):
+        """
+        Проверяет наличие задачи в планировщике задач Windows
+        
+        Returns:
+            bool: True если задача существует, иначе False
+        """
+        try:
+            task_name = "ZapretCensorliber"
+            check_cmd = f'schtasks /Query /TN "{task_name}" 2>nul'
+            result = subprocess.run(check_cmd, shell=True, capture_output=True)
+            return result.returncode == 0
+        except:
+            return False
+            
+    def check_windows_service_exists(self):
+        """
+        Проверяет наличие службы Windows
+        
+        Returns:
+            bool: True если служба существует, иначе False
+        """
+        try:
+            service_result = subprocess.run(
+                f'sc query {self.service_name}',
+                shell=True,
+                capture_output=True,
+                text=True,
+                encoding='cp866'
+            )
+            return service_result.returncode == 0 and "STATE" in service_result.stdout
+        except:
+            return False
+
+    def remove_service(self):
+        """
+        Удаляет все механизмы автозапуска (реестр, планировщик, служба)
+        
+        Returns:
+            bool: True если все механизмы успешно удалены, иначе False
+        """
+        try:
+            from log import log
+            log("Удаление всех механизмов автозапуска...", level="INFO")
+            
+            # Удаляем из планировщика
+            task_removed = self.remove_scheduler_task()
+            
+            # Удаляем службу Windows
+            service_removed = self.remove_legacy_windows_service()
+            
+            # Удаляем из реестра
+            registry_removed = self.remove_autostart_registry()
+            
+            # Возвращаем True, если хотя бы один метод был успешно удален
+            return task_removed or service_removed or registry_removed
+            
+        except Exception as e:
+            from log import log
+            log(f"Ошибка при удалении автозапуска: {str(e)}", level="ERROR")
+            return False
+            
+    def remove_scheduler_task(self):
+        """
+        Удаляет задачу из планировщика задач Windows
+        
+        Returns:
+            bool: True если задача успешно удалена или не существовала, иначе False
+        """
+        try:
+            from log import log
+            task_name = "ZapretCensorliber"
+            
+            # Проверяем существование задачи
+            check_cmd = f'schtasks /Query /TN "{task_name}" 2>nul'
+            result = subprocess.run(check_cmd, shell=True, capture_output=True)
+            
+            if result.returncode == 0:
+                log("Найдена задача в планировщике, удаляем...", level="INFO")
+                delete_cmd = f'schtasks /Delete /TN "{task_name}" /F'
+                subprocess.run(delete_cmd, shell=True, check=False)
+                return True
+            else:
+                # Задача не существует
+                return True
+                
+        except Exception as e:
+            from log import log
+            log(f"Ошибка при удалении задачи из планировщика: {str(e)}", level="ERROR")
+            return False
+
+
+    def remove_legacy_windows_service(self) -> bool:
+        """
+        Принудительно удаляет службу Windows ZapretCensorliber, если она ещё
+        осталась от старых версий.
+
+        Returns:
+            bool: True если службы нет или она успешно удалена, иначе False
+        """
+        try:
+            from log import log
+            svc = self.service_name  # обычно 'ZapretCensorliber'
+
+            # 1) проверяем, существует ли служба
+            query = subprocess.run(
+                f'sc query "{svc}"',
+                shell=True,
+                capture_output=True,
+                text=True,
+                encoding='cp866'
+            )
+
+            if query.returncode != 0:
+                # Служба не найдена - нечего удалять
+                return True
+
+            # 2) пытаемся остановить
+            self.set_status("Остановка устаревшей службы…")
+            log(f"Останавливаем службу {svc}", level="INFO")
+            subprocess.run(f'sc stop "{svc}"', shell=True, capture_output=True)
+
+            time.sleep(1.0)  # даём время на остановку
+
+            # 3) удаляем службу
+            self.set_status("Удаление устаревшей службы…")
+            log(f"Удаляем службу {svc}", level="INFO")
+            delete = subprocess.run(
+                f'sc delete "{svc}"',
+                shell=True,
+                capture_output=True,
+                text=True,
+                encoding='cp866'
+            )
+
+            if delete.returncode == 0:
+                log("Служба успешно удалена", level="INFO")
+                self.set_status("Служба успешно удалена")
+                return True
+            else:
+                err = delete.stderr.strip() or delete.stdout.strip()
+                log(f"Ошибка удаления службы: {err}", level="ERROR")
+                self.set_status(f"Ошибка удаления службы: {err}")
+                return False
+
+        except Exception as e:
+            from log import log
+            log(f"remove_legacy_windows_service: {e}", level="ERROR")
+            self.set_status(f"Ошибка: {e}")
+            return False
+            
+    def get_current_service_config(self):
+        """
+        Получает текущую конфигурацию стратегии из реестра
+        
+        Returns:
+            str: Имя стратегии или None, если не удалось определить
+        """
+        try:
+            # Проверяем существование автозапуска
+            if not self.check_autostart_exists():
+                return None  # Автозапуск не настроен
             
             # Получаем конфигурацию из реестра
             config = get_config_from_registry()
             return config if config else "Пользовательская"
                 
         except Exception as e:
-            print(f"Ошибка при определении конфигурации службы: {str(e)}")
+            from log import log
+            log(f"Ошибка при определении конфигурации: {str(e)}", level="ERROR")
             return "Неизвестная"
