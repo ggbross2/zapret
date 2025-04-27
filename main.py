@@ -1,34 +1,43 @@
-import ctypes, sys, os, winreg, subprocess, webbrowser, time, shutil
+import sys, os, ctypes, winreg, subprocess, webbrowser, time, shutil
 
-from PyQt5.QtCore import Qt, QPoint, QPropertyAnimation, QEasingCurve, QTimer, pyqtProperty
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QComboBox, QLabel, QSpacerItem, QSizePolicy, QHBoxLayout, QMessageBox, QFrame
-from PyQt5.QtGui import QPainter, QColor
+from PyQt5.QtCore    import Qt, QTimer, QThread, pyqtSignal
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QHBoxLayout,
+                             QComboBox, QMessageBox, QApplication, QFrame,
+                             QSpacerItem, QSizePolicy)
+
 
 from downloader import DOWNLOAD_URLS
-from config import DPI_COMMANDS, APP_VERSION, BIN_FOLDER, LISTS_FOLDER
+from config import APP_VERSION, BIN_FOLDER, LISTS_FOLDER, WINWS_EXE, ICON_PATH
 from hosts import HostsManager
 from service import ServiceManager
 from start import DPIStarter
-from discord import DiscordManager
-from urls import *
 
-# Добавляем функции для работы с реестром
-def get_discord_restart_setting():
-    """Получает настройку автоматического перезапуска Discord из реестра"""
+from theme import ThemeManager, RippleButton, THEMES, BUTTON_STYLE, COMMON_STYLE, BUTTON_HEIGHT, STYLE_SHEET
+from tray import SystemTrayManager
+from dns import DNSSettingsDialog
+from urls import AUTHOR_URL, INFO_URL
+from updater import check_for_update
+from strategy_selector import StrategySelector
+
+WIDTH = 450
+HEIGHT = 700
+
+def get_last_strategy():
+    """Получает последнюю выбранную стратегию обхода из реестра"""
     try:
         registry = winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
             r"Software\Zapret"
         )
-        value, _ = winreg.QueryValueEx(registry, "AutoRestartDiscord")
+        value, _ = winreg.QueryValueEx(registry, "LastStrategy")
         winreg.CloseKey(registry)
-        return bool(value)
+        return value
     except:
-        # По умолчанию включено
-        return True
+        # По умолчанию возвращаем None, чтобы использовать первую стратегию из списка
+        return "Оригинальная bol-van v2 (07.04.2025)"
     
-def set_discord_restart_setting(enabled):
-    """Сохраняет настройку автоматического перезапуска Discord в реестр"""
+def set_last_strategy(strategy_name):
+    """Сохраняет последнюю выбранную стратегию обхода в реестр"""
     try:
         # Пытаемся открыть ключ, если его нет - создаем
         try:
@@ -45,11 +54,11 @@ def set_discord_restart_setting(enabled):
             )
         
         # Записываем значение
-        winreg.SetValueEx(registry, "AutoRestartDiscord", 0, winreg.REG_DWORD, int(enabled))
+        winreg.SetValueEx(registry, "LastStrategy", 0, winreg.REG_SZ, strategy_name)
         winreg.CloseKey(registry)
         return True
     except Exception as e:
-        print(f"Ошибка при сохранении настройки: {str(e)}")
+        print(f"Ошибка при сохранении стратегии: {str(e)}")
         return False
 
 def is_admin():
@@ -58,366 +67,1040 @@ def is_admin():
     except:
         return False
 
-WINWS_EXE = os.path.join(BIN_FOLDER, "winws.exe")
-ICON_PATH = os.path.join(BIN_FOLDER, "zapret.ico")  # Путь к иконке в папке bin
-
-BUTTON_STYLE = """
-QPushButton {{
-    border: none;
-    background-color: rgb({0});
-    color: #fff;
-    border-radius: 4px;
-    padding: 8px;
-}}
-QPushButton:hover {{
-    background-color: rgb({0});
-}}
-"""
-COMMON_STYLE = "color:rgb(0, 119, 255); font-weight: bold;"
-BUTTON_HEIGHT = 10
-STYLE_SHEET = """
-    @keyframes ripple {
-        0% {
-            transform: scale(0, 0);
-            opacity: 0.5;
-        }
-        100% {
-            transform: scale(40, 40);
-            opacity: 0;
-        }
-    }
-"""
-
-THEMES = {
-    "Темная синяя": {"file": "dark_blue.xml", "status_color": "#ffffff"},
-    "Темная бирюзовая": {"file": "dark_cyan.xml", "status_color": "#ffffff"},
-    "Темная янтарная": {"file": "dark_amber.xml", "status_color": "#ffffff"},
-    "Темная розовая": {"file": "dark_pink.xml", "status_color": "#ffffff"},
-    "Светлая синяя": {"file": "light_blue.xml", "status_color": "#000000"},
-    "Светлая бирюзовая": {"file": "light_cyan.xml", "status_color": "#000000"},
-    "РКН Тян": {"file": "dark_blue.xml", "status_color": "#ffffff"},  # Временно используем dark_blue как основу
-}
-
-class RippleButton(QPushButton):
-    def __init__(self, text, parent=None, color=""):
-        self.manually_stopped = False  # Флаг для отслеживания намеренной остановки
-        super().__init__(text, parent)
-        self._ripple_pos = QPoint()
-        self._ripple_radius = 0
-        self._ripple_opacity = 0
-        self._bgcolor = color
-        
-        # Настройка анимаций
-        self._ripple_animation = QPropertyAnimation(self, b"rippleRadius", self)
-        self._ripple_animation.setDuration(300)
-        self._ripple_animation.setStartValue(0)
-        self._ripple_animation.setEndValue(100)
-        self._ripple_animation.setEasingCurve(QEasingCurve.OutQuad)
-
-        self._fade_animation = QPropertyAnimation(self, b"rippleOpacity", self)
-        self._fade_animation.setDuration(300)
-        self._fade_animation.setStartValue(0.5)
-        self._fade_animation.setEndValue(0)
-
-    @pyqtProperty(float)
-    def rippleRadius(self):
-        return self._ripple_radius
-
-    @rippleRadius.setter
-    def rippleRadius(self, value):
-        self._ripple_radius = value
-        self.update()
-
-    @pyqtProperty(float)
-    def rippleOpacity(self):
-        return self._ripple_opacity
-
-    @rippleOpacity.setter
-    def rippleOpacity(self, value):
-        self._ripple_opacity = value
-        self.update()
-
-    def mousePressEvent(self, event):
-        self._ripple_pos = event.pos()
-        self._ripple_opacity = 0.5
-        self._ripple_animation.start()
-        super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        self._fade_animation.start()
-        super().mouseReleaseEvent(event)
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if self._ripple_radius > 0:
-            painter = QPainter(self)
-            painter.setRenderHint(QPainter.Antialiasing)
-            painter.setOpacity(self._ripple_opacity)
-            
-            painter.setBrush(QColor(255, 255, 255, 60))
-            painter.setPen(Qt.NoPen)
-            painter.drawEllipse(self._ripple_pos, self._ripple_radius, self._ripple_radius)
-
-def get_windows_theme():
-    """Определяет текущую тему Windows (светлая/темная)"""
-    try:
-        registry = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-        )
-        value, _ = winreg.QueryValueEx(registry, "AppsUseLightTheme")
-        winreg.CloseKey(registry)
-        return "light" if value == 1 else "dark"
-    except:
-        return "dark"  # По умолчанию темная тема
-    
-def get_version(self):
+def get_version():
     """Возвращает текущую версию программы"""
     return APP_VERSION
 
-class LupiDPIApp(QWidget):
-    def check_for_updates(self):
-        """Проверяет наличие обновлений и запускает процесс обновления через BAT-файл"""
-        try:
-            # Проверяем наличие модуля requests
-            try:
-                import requests
-                from packaging import version
-            except ImportError:
-                self.set_status("Установка зависимостей для проверки обновлений...")
-                subprocess.run([sys.executable, "-m", "pip", "install", "requests packaging"], 
-                            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                import requests
-                from packaging import version
-                
-            # URL для проверки обновлений
-            version_url = VERSION_URL
-            
-            self.set_status("Проверка наличия обновлений...")
-            response = requests.get(version_url, timeout=5)
-            if response.status_code == 200:
-                info = response.json()
-                latest_version = info.get("version")
-                release_notes = info.get("release_notes", "Нет информации об изменениях")
-                
-                # URL для скачивания BAT-файла обновления
-                bat_url = info.get("updater_bat_url", UPDATER_BAT_URL)
-                
-                # Сравниваем версии
-                if version.parse(latest_version) > version.parse(APP_VERSION):
-                    # Нашли обновление
-                    msg = QMessageBox()
-                    msg.setIcon(QMessageBox.Information)
-                    msg.setWindowTitle("Доступно обновление")
-                    msg.setText(f"Доступна новая версия: {latest_version}\nТекущая версия: {APP_VERSION}")
-                    
-                    # Добавляем информацию о выпуске
-                    msg.setInformativeText(f"Список изменений:\n{release_notes}\n\nХотите обновиться сейчас?")
-                    
-                    msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-                    if msg.exec_() == QMessageBox.Yes:
-                        # Запускаем процесс обновления
-                        self.set_status("Запуск обновления...")
-                        
-                        # Получаем путь к текущему исполняемому файлу
-                        exe_path = os.path.abspath(sys.executable)
-                        
-                        # Если это не скомпилированное приложение, updater не сможет заменить .py файл
-                        if not getattr(sys, 'frozen', False):
-                            QMessageBox.warning(self, "Обновление невозможно", 
-                                            "Автоматическое обновление возможно только для скомпилированных (.exe) версий программы.")
-                            return
-                        
-                        # Скачиваем BAT-файл обновления
-                        try:
-                            # Создаем временный файл для скрипта обновления
-                            updater_bat = os.path.join(os.path.dirname(exe_path), "update_zapret.bat")
-                            
-                            # Скачиваем BAT-файл
-                            self.set_status("Скачивание скрипта обновления...")
-                            bat_response = requests.get(bat_url)
-                            bat_content = bat_response.text
+BIN_DIR = os.path.join(os.getcwd(), "bin")     # при необходимости переопределите
 
-                            # Заменяем переменные в BAT-файле
-                            bat_content = bat_content.replace("{EXE_PATH}", exe_path)
-                            bat_content = bat_content.replace("{EXE_DIR}", os.path.dirname(exe_path))
-                            bat_content = bat_content.replace("{EXE_NAME}", os.path.basename(exe_path))
-                            bat_content = bat_content.replace("{CURRENT_VERSION}", APP_VERSION)
-                            bat_content = bat_content.replace("{NEW_VERSION}", latest_version)
+import platform
+import subprocess
+import ctypes
 
-                            # Сохраняем BAT-файл
-                            with open(updater_bat, 'w', encoding='utf-8') as f:
-                                f.write(bat_content)
-                            
-                            # Запускаем BAT-файл
-                            self.set_status("Запуск скрипта обновления...")
-                            # Изменим способ запуска BAT-файла, чтобы показать консоль
-                            subprocess.Popen(f'cmd /c start cmd /k "{updater_bat}"', shell=True)
-                            
-                            # Завершаем текущий процесс после небольшой задержки
-                            self.set_status("Запущен процесс обновления. Приложение будет перезапущено.")
-                            QTimer.singleShot(2000, lambda: sys.exit(0))
-                            
-                        except Exception as e:
-                            self.set_status(f"Ошибка при подготовке обновления: {str(e)}")
-                            # Если произошла ошибка при скачивании BAT-файла, создаем его локально
-                            try:
-                                # Создаем BAT-файл вручную
-                                updater_bat = os.path.join(os.path.dirname(exe_path), "update_zapret.bat")
-                                with open(updater_bat, 'w', encoding='utf-8') as f:
-                                    f.write(f"""@echo off
-                                    chcp 65001 > nul
-                                    echo UPDATE ZAPRET!
-                                    title Old v{APP_VERSION} to new v{latest_version}
+def remove_windows_terminal_if_win11():
 
-                                    echo Wait...
-                                    timeout /t 3 /nobreak > nul
-                                    del /f /q "{exe_path}" >nul 2>&1
-                                    echo  Download new version...
-                                    powershell -Command "(New-Object System.Net.WebClient).DownloadFile('{EXE_UPDATE_URL}', '%TEMP%\\zapret_new.exe')"
+    from log import log
+    """
+    На Windows 11 удаляет Windows Terminal (Store-версию) двумя способами:
+    1) `Remove-AppxPackage` – удаляет у текущего пользователя
+    2) `Remove-AppxProvisionedPackage` – убирает «заготовку» для новых учёток
 
-                                    if %ERRORLEVEL% NEQ 0 (
-                                        echo Error download update!
-                                        pause
-                                        exit /b 1
-                                    )
+    Требуются права администратора.  
+    При любой ошибке пишет в лог, но не прерывает запуск программы.
+    """
+    try:
+        # 2. Проверяем права администратора
+        if not ctypes.windll.shell32.IsUserAnAdmin():
+            log("remove_windows_terminal: нет прав администратора – пропуск")
+            return
 
-                                    echo Replace old to new version
-                                    copy /Y "%TEMP%\\zapret_new.exe" "{exe_path}"
+        log("Удаляем Windows Terminal…")
 
-                                    if %ERRORLEVEL% NEQ 0 (
-                                        echo "Не удалось заменить файл. Проверьте права доступа."
-                                        pause
-                                        exit /b 1
-                                    )
+        # 3. Команды PowerShell
+        ps_remove_user = (
+            'Get-AppxPackage -Name Microsoft.WindowsTerminal '
+            '| Remove-AppxPackage -AllUsers'
+        )
+        ps_remove_prov = (
+            'Get-AppxProvisionedPackage -Online '
+            '| Where-Object {$_.PackageName -like "*WindowsTerminal*"} '
+            '| Remove-AppxProvisionedPackage -Online'
+        )
 
-                                    set CURRENT_DIR=%CD%
-                                    cd /d "{os.path.dirname(exe_path)}"
-                                    cd /d %CURRENT_DIR%
-                                    echo Del temp file...
-                                    del "%TEMP%\\zapret_new.exe" >nul 2>&1
-                                    echo Update done success!
-                                    echo Please run Zapret (main.exe) again!
-                                    del "%~f0" >nul 2>&1
-                                    """)
-                                                                
-                                # Запускаем BAT-файл
-                                subprocess.Popen(f'cmd /c start cmd /k "{updater_bat}"', shell=True)
-                                
-                                # Завершаем текущий процесс после небольшой задержки
-                                self.set_status("Запущен процесс обновления. Приложение будет перезапущено.")
-                                QTimer.singleShot(2000, lambda: sys.exit(0))
-                            except Exception as inner_e:
-                                self.set_status(f"Критическая ошибка обновления: {str(inner_e)}")
-                    else:
-                        self.set_status(f"У вас установлена последняя версия ({latest_version}).")
-                else:
-                    self.set_status(f"У вас установлена последняя версия ({latest_version}).")
-            else:
-                self.set_status(f"Не удалось проверить обновления.\nКод: {response.status_code}")
-        except Exception as e:
-            self.set_status(f"Ошибка при проверке обновлений:\n{str(e)}")
+        for cmd in (ps_remove_user, ps_remove_prov):
+            subprocess.run(
+                ["powershell", "-NoLogo", "-NoProfile", "-Command", cmd],
+                check=False,  # ошибки не критичны
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+        log("Windows Terminal удалён (или не был установлен).")
+
+    except Exception as e:
+        log(f"remove_windows_terminal: {e}")
+
+def remove_scheduler_tasks():
+    """Принудительно удаляет все задачи планировщика, связанные с Zapret"""
+    try:
+        from log import log
+        task_name = "ZapretCensorliber"
+        
+        # Проверяем существование задачи
+        check_cmd = f'schtasks /Query /TN "{task_name}" 2>nul'
+        result = subprocess.run(check_cmd, shell=True, capture_output=True)
+        
+        if result.returncode == 0:
+            log(f"Обнаружена задача планировщика {task_name}, удаляем...", level="INFO")
+            delete_cmd = f'schtasks /Delete /TN "{task_name}" /F'
+            subprocess.run(delete_cmd, shell=True, check=False)
+            return True
+        
+        return False  # Задача не найдена
+    except Exception as e:
+        from log import log
+        log(f"Ошибка при удалении задачи планировщика: {str(e)}", level="ERROR")
+        return False
+
+class ProcessMonitorThread(QThread):
+    """Поток для мониторинга процесса winws.exe"""
+    processStatusChanged = pyqtSignal(bool)  # Сигнал: процесс запущен/остановлен
     
-    def download_files_wrapper(self):
-        """Обертка для скачивания файлов, использующая внешнюю функцию"""
-        return self.dpi_starter.download_files(DOWNLOAD_URLS)
-
-    def __init__(self):
-        # Инициализируем переменную для секретного ввода
-        self._secret_input = ""
-
-        """Initializes the application window."""
+    def __init__(self, dpi_starter):
         super().__init__()
+        self.dpi_starter = dpi_starter
+        self.running = True
+        self.current_status = None
+    
+    def run(self):
+        from log import log
+        log("Поток мониторинга процесса запущен", level="INFO")
+        
+        while self.running:
+            try:
+                # Проверяем текущий статус процесса
+                is_running = self.dpi_starter.check_process_running(silent=True)
+                
+                # Если статус изменился, отправляем сигнал
+                if is_running != self.current_status:
+                    log(f"Изменение статуса процесса winws.exe: {is_running}", level="INFO")
+                    self.current_status = is_running
+                    self.processStatusChanged.emit(is_running)
+            except Exception as e:
+                log(f"Ошибка в потоке мониторинга: {str(e)}", level="ERROR")
+            
+            # Проверка каждые 2 секунды достаточна
+            self.msleep(2000)
+    
+    def stop(self):
+        """Останавливает поток мониторинга"""
+        self.running = False
+        self.wait()
+
+class LupiDPIApp(QWidget):
+    def closeEvent(self, event):
+        """Обрабатывает событие закрытия окна"""
+        # Останавливаем поток мониторинга
+        if hasattr(self, 'process_monitor') and self.process_monitor is not None:
+            self.process_monitor.stop()
+        
+        # Стандартная обработка события
+        super().closeEvent(event)
+        
+    def set_status(self, text):
+        """Sets the status text."""
+        self.status_label.setText(text)
+
+    def update_ui(self, running):
+        """Обновляет состояние кнопок и элементов интерфейса в зависимости от статуса запуска"""
+        # Проверяем, активен ли автозапуск
+        autostart_active = False
+        if hasattr(self, 'service_manager'):
+            autostart_active = self.service_manager.check_autostart_exists()
+        
+        # Если автозапуск активен, не обновляем кнопки запуска/остановки
+        # так как они должны управляться методом update_autostart_ui
+        if not autostart_active:
+            # Обновляем кнопки запуска/остановки только если нет автозапуска
+            self.start_btn.setVisible(not running)
+            self.stop_btn.setVisible(running)
+        
+    def check_if_process_started_correctly(self):
+        """Проверяет, что процесс успешно запустился и продолжает работать"""
+        from log import log
+        
+        # Проверяем флаг намеренного запуска и сбрасываем его
+        intentional_start = getattr(self, 'intentional_start', False)
+        
+        # Не сбрасываем флаг intentional_start здесь, чтобы предотвратить конфликты
+        # self.intentional_start = False
+        
+        # Если процесс находится в процессе перезапуска или был остановлен намеренно, пропускаем проверку
+        if hasattr(self, 'process_restarting') and self.process_restarting:
+            log("Пропускаем проверку: процесс перезапускается", level="INFO") 
+            self.process_restarting = False  # Сбрасываем флаг
+            self.on_process_status_changed(self.dpi_starter.check_process_running(silent=True))
+            return
+            
+        if hasattr(self, 'manually_stopped') and self.manually_stopped:
+            log("Пропускаем проверку: процесс остановлен вручную", level="INFO")
+            self.manually_stopped = False  # Сбрасываем флаг
+            self.on_process_status_changed(self.dpi_starter.check_process_running(silent=True))
+            return
+        
+        # Проверяем, был ли недавно изменен режим (стратегия)
+        current_time = time.time()
+        if hasattr(self, 'last_strategy_change_time') and current_time - self.last_strategy_change_time < 5:
+            # Пропускаем проверку, если стратегия была изменена менее 5 секунд назад
+            log("Пропускаем проверку: недавно изменена стратегия", level="INFO")
+            self.on_process_status_changed(self.dpi_starter.check_process_running(silent=True))
+            return
+        
+        # Проверяем, запущен ли процесс на данный момент
+        process_running = self.dpi_starter.check_process_running()
+        
+        # Если процесс запущен, всё в порядке
+        if process_running:
+            log("Процесс запущен и работает нормально", level="INFO")
+            self.update_ui(running=True)
+            return
+            
+        # Если флаг намеренного запуска установлен, но процесс не запущен
+        if intentional_start and not process_running:
+            # Вместо показа ошибки просто логируем информацию
+            log("Процесс не запустился после намеренного запуска", level="WARNING")
+            self.update_ui(running=False)
+        elif not intentional_start and not process_running:
+            # Если процесс не запущен, и это не связано с переключением стратегии, показываем ошибку
+            exe_path = os.path.abspath(WINWS_EXE)
+            # Добавляем проверку, чтобы не показывать сообщение, если процесс был недавно остановлен вручную
+            if not hasattr(self, 'recently_stopped') or not self.recently_stopped:
+                QMessageBox.critical(self, "Ошибка запуска", 
+                                f"Процесс winws.exe запустился, но затем неожиданно завершился.\n\n"
+                                f"Путь к программе: {exe_path}\n\n"
+                                "Это может быть вызвано:\n"
+                                "1. Антивирус удалил часть критически важных файлов программы - переустановите программу заново\n"
+                                "2. Какие-то файлы удалены из программы - скачате ZIP архив заново\n\n"
+                                "Перед переустановкой программы создайте исключение в антивирусе.")
+            self.update_ui(running=False)
+        
+        # В любом случае обновляем статус
+        self.on_process_status_changed(self.dpi_starter.check_process_running(silent=True))
+        
+    def select_strategy(self):
+        """Открывает диалог выбора стратегии."""
+        try:
+            if not hasattr(self, 'strategy_manager') or not self.strategy_manager:
+                from log import log
+                log("Ошибка: менеджер стратегий не инициализирован", level="ERROR")
+                self.set_status("Ошибка: менеджер стратегий не инициализирован")
+                return
+            
+            # Получаем текущую выбранную стратегию из метки
+            current_strategy = self.current_strategy_label.text()
+            if current_strategy == "Не выбрана":
+                current_strategy = get_last_strategy()
+            
+            # Создаем и показываем диалог выбора стратегии
+            selector = StrategySelector(
+                parent=self,
+                strategy_manager=self.strategy_manager,
+                current_strategy_name=current_strategy
+            )
+            
+            # Подключаем сигнал выбора стратегии
+            selector.strategySelected.connect(self.on_strategy_selected_from_dialog)
+            
+            # Показываем диалог
+            selector.exec_()
+        except Exception as e:
+            from log import log
+            log(f"Ошибка при открытии диалога выбора стратегии: {str(e)}", level="ERROR")
+            self.set_status(f"Ошибка при выборе стратегии: {str(e)}")
+
+    def on_strategy_selected_from_dialog(self, strategy_id, strategy_name):
+        """Обрабатывает выбор стратегии из диалога."""
+        try:
+            from log import log
+            log(f"Выбрана стратегия: {strategy_name} (ID: {strategy_id})", level="INFO")
+            
+            # Сохраняем ID и имя выбранной стратегии в атрибутах класса
+            self.current_strategy_id = strategy_id
+            self.current_strategy_name = strategy_name
+            
+            # Обновляем метку с текущей стратегией
+            self.current_strategy_label.setText(strategy_name)
+            
+            # Сохраняем выбранную стратегию в реестр
+            set_last_strategy(strategy_name)
+            
+            # Записываем время изменения стратегии
+            self.last_strategy_change_time = time.time()
+            
+            # Запускаем стратегию
+            self.dpi_starter.start_dpi(selected_mode=strategy_name)
+            
+            # Перезапускаем Discord только если:
+            # 1. Это не первый запуск
+            # 2. Автоперезапуск включен в настройках
+            from discord_restart import get_discord_restart_setting
+            if not self.first_start and get_discord_restart_setting():
+                self.discord_manager.restart_discord_if_running()
+            else:
+                self.first_start = False  # Сбрасываем флаг первого запуска
+        except Exception as e:
+            log(f"Ошибка при установке выбранной стратегии: {str(e)}", level="ERROR")
+            self.set_status(f"Ошибка при установке стратегии: {str(e)}")
+
+    
+    def _load_strategy_index(self) -> dict:
+        """
+        Загружает и кэширует словарь из bin/index.json
+        """
+        if hasattr(self, "_strategy_index") and self._strategy_index:
+            return self._strategy_index            # уже загружен
+
+        index_path = os.path.join(BIN_DIR, "index.json")
+        from log import log
+
+        if not os.path.isfile(index_path):
+            log(f"index.json не найден по пути {index_path}", level="ERROR")
+            self.set_status("Ошибка: index.json не найден")
+            self._strategy_index = {}
+            return self._strategy_index
+
+        try:
+            with open(index_path, "r", encoding="utf-8") as f:
+                import json
+                self._strategy_index = json.load(f)
+            log(f"Загружено стратегий: {len(self._strategy_index)}", level="DEBUG")
+        except Exception as e:
+            log(f"Не удалось прочитать index.json: {e}", level="ERROR")
+            self.set_status(f"Ошибка чтения index.json: {e}")
+            self._strategy_index = {}
+
+        return self._strategy_index
+
+    def update_autostart_ui(self, service_running: bool | None):
+        """
+        Обновляет интерфейс при включении / выключении автозапуска.
+        • start_btn, stop_btn скрываются если автозапуск активен
+        • autostart_enable_btn скрывается если автозапуск активен
+        • autostart_disable_btn растягивается на 2-колонки
+        """
+        if service_running is None and hasattr(self, 'service_manager'):
+            service_running = self.service_manager.check_autostart_exists()
+
+        enable_btn  = self.autostart_enable_btn
+        disable_btn = self.autostart_disable_btn
+        start_btn   = getattr(self, 'start_btn',  None)
+        stop_btn    = getattr(self, 'stop_btn',   None)
+
+        # --- если автозапуск активен -----------------------------------------
+        if service_running:
+            if start_btn:  start_btn.setVisible(False)
+            if stop_btn:   stop_btn.setVisible(False)
+            enable_btn.setVisible(False)
+
+            # Сначала удаляем кнопку отключения из сетки, чтобы не было дублирования
+            self.button_grid.removeWidget(disable_btn)
+            
+            # Затем добавляем её снова, но растянутую на 2 колонки
+            self.button_grid.addWidget(disable_btn, 0, 0, 1, 2)
+            
+            # Показываем кнопку отключения автозапуска
+            disable_btn.setVisible(True)
+            disable_btn.setText('Выкл. автозапуск')  # Гарантируем правильный текст
+            
+            # ИЗМЕНЕНО: Оставляем кнопку выбора стратегии видимой всегда
+            # self.select_strategy_btn.setVisible(False)
+
+            # Удаляем предупреждение о смене стратегии
+            if hasattr(self, 'service_info_label'):
+                self.service_info_label.setVisible(False)
+                self.layout().removeWidget(self.service_info_label)
+                self.service_info_label.deleteLater()
+                self.service_info_label = None
+
+        # --- автозапуск выключен ---------------------------------------------
+        else:
+            # Сначала удаляем кнопку отключения из сетки
+            self.button_grid.removeWidget(disable_btn)
+            
+            # Возвращаем стандартную раскладку
+            if start_btn:  
+                start_btn.setVisible(True)
+                self.button_grid.addWidget(start_btn, 0, 0)
+                    
+            if stop_btn:   
+                stop_btn.setVisible(False)
+                self.button_grid.addWidget(stop_btn, 0, 0)
+                    
+            enable_btn.setVisible(True)
+            self.button_grid.addWidget(enable_btn, 0, 1)
+            
+            # Добавляем кнопку отключения автозапуска на правильное место
+            self.button_grid.addWidget(disable_btn, 0, 1)
+            disable_btn.setVisible(False)  # Но скрываем её, так как автозапуск выключен
+            
+    def update_strategies_list(self, force_update=False):
+        """Обновляет список доступных стратегий"""
+        try:
+            from log import log
+            
+            # Получаем список стратегий
+            strategies = self.strategy_manager.get_strategies_list(force_update=force_update)
+            
+            if not strategies:
+                log("Не удалось получить список стратегий", level="ERROR")
+                return
+            
+            # Выводим список стратегий в лог для отладки
+            log(f"Получены стратегии: {list(strategies.keys())}", level="DEBUG")
+            for strategy_id, info in strategies.items():
+                log(f"Стратегия ID: {strategy_id}, Name: {info.get('name')}, Path: {info.get('file_path')}", level="DEBUG")
+            
+            # Сохраняем текущий выбор
+            current_strategy = None
+            if hasattr(self, 'current_strategy_name') and self.current_strategy_name:
+                current_strategy = self.current_strategy_name
+            else:
+                current_strategy = self.current_strategy_label.text()
+                if current_strategy == "Не выбрана":
+                    current_strategy = get_last_strategy()
+            
+            # Обновляем текущую метку, если стратегия выбрана
+            if current_strategy and current_strategy != "Не выбрана":
+                self.current_strategy_label.setText(current_strategy)
+            
+            log(f"Загружено {len(strategies)} стратегий", level="INFO")
+            
+        except Exception as e:
+            error_msg = f"Ошибка при обновлении списка стратегий: {str(e)}"
+            from log import log
+            log(error_msg, level="ERROR")
+            self.set_status(error_msg)
+        
+    def init_strategy_manager(self):
+        """Инициализирует менеджер стратегий"""
+        try:
+            from strategy_manager import StrategyManager
+            from log import log
+            
+            # Импортируем настройки из config
+            from config import GITHUB_STRATEGIES_BASE_URL, STRATEGIES_FOLDER, GITHUB_STRATEGIES_JSON_URL
+            
+            # Создаем директорию для стратегий, если она не существует
+            if not os.path.exists(STRATEGIES_FOLDER):
+                os.makedirs(STRATEGIES_FOLDER, exist_ok=True)
+            
+            # Инициализируем менеджер стратегий
+            self.strategy_manager = StrategyManager(
+                base_url=GITHUB_STRATEGIES_BASE_URL,
+                local_dir=STRATEGIES_FOLDER,
+                status_callback=self.set_status,
+                json_url=GITHUB_STRATEGIES_JSON_URL  # Прямая ссылка на JSON
+            )
+            
+            # Предзагружаем все стратегии
+            self.strategy_manager.preload_strategies()
+            
+            # Обновляем список стратегий с обработкой ошибок
+            try:
+                # Обновляем список доступных стратегий
+                self.update_strategies_list()
+                
+                # Устанавливаем последнюю сохраненную стратегию в текстовую метку
+                last_strategy = get_last_strategy()
+                if last_strategy:
+                    self.current_strategy_label.setText(last_strategy)
+                    self.current_strategy_name = last_strategy
+            except Exception as e:
+                log(f"Ошибка при обновлении списка стратегий: {str(e)}", level="ERROR")
+                self.set_status(f"Не удалось загрузить стратегии: {str(e)}")
+        except Exception as e:
+            from log import log
+            log(f"Ошибка при инициализации менеджера стратегий: {str(e)}", level="ERROR")
+            self.set_status(f"Ошибка стратегий: {str(e)}")
+            
+            # Создаем заглушку для strategy_manager
+            self.strategy_manager = None
+
+    def initialize_managers_and_services(self):
+        # Добавляем флаг инициализации
+        self.initializing = True
+        
+        # Добавляем флаг защиты процесса от автоматического завершения
+        self.protected_process = True
+        self.init_process_monitor()
+        
+        # Инициализируем последнее время смены стратегии
+        self.last_strategy_change_time = time.time()
+
+        # Инициализируем Discord Manager
+        from discord import DiscordManager
+        self.discord_manager = DiscordManager(status_callback=self.set_status)
+
+        # Инициализируем hosts_manager
+        self.hosts_manager = HostsManager(status_callback=self.set_status)
+        
+        # Инициализируем менеджер стратегий
+        self.init_strategy_manager()
+        
+        # Инициализируем менеджер тем
+        self.theme_manager = ThemeManager(
+            app=QApplication.instance(),
+            widget=self,
+            status_label=self.status_label,
+            author_label=self.author_label,
+            support_label=self.support_label,
+            bin_folder=BIN_FOLDER,
+            author_url=AUTHOR_URL,
+            bol_van_url=self.bol_van_url
+        )
+        
+        self.theme_combo.setCurrentText(self.theme_manager.current_theme)
+        self.theme_manager.apply_theme()
+        
+        # Инициализируем менеджер служб
+        self.service_manager = ServiceManager(
+            winws_exe=WINWS_EXE,
+            bin_folder=BIN_FOLDER,
+            lists_folder=LISTS_FOLDER,
+            status_callback=self.set_status,
+            ui_callback = self.update_ui    
+        )
+        
+        # Проверяем и обновляем UI службы/задачи
+        autostart_running = self.service_manager.check_autostart_exists()
+        self.update_autostart_ui(autostart_running)
+
+        service_running = self.service_manager.check_service_exists()
+        self.update_autostart_ui(service_running)
+        
+        # Обновляем UI состояния запуска
+        self.update_ui(running=True)
+        
+        # Проверяем наличие необходимых файлов
+        self.set_status("Проверка файлов...")
+        self.dpi_starter.download_files(DOWNLOAD_URLS)
+        
+        # Безопасно запускаем DPI после инициализации всех менеджеров
+        QTimer.singleShot(100, self.delayed_dpi_start)
+        
+        # Обновляем состояние кнопки прокси через 4.5 секунды
+        QTimer.singleShot(150, self.update_proxy_button_state)
+        
+        # Снимаем флаг инициализации и защиты через 8 секунд
+        QTimer.singleShot(100, self.finish_initialization)
+
+
+    def init_process_monitor(self):
+        """Инициализирует поток мониторинга процесса"""
+        if hasattr(self, 'process_monitor') and self.process_monitor is not None:
+            self.process_monitor.stop()
+        
+        self.process_monitor = ProcessMonitorThread(self.dpi_starter)
+        self.process_monitor.processStatusChanged.connect(self.on_process_status_changed)
+        self.process_monitor.start()
+
+    def on_process_status_changed(self, is_running):
+        """Обрабатывает сигнал изменения статуса процесса"""
+        from log import log
+        
+        # Проверяем, изменилось ли состояние автозапуска
+        autostart_active = self.service_manager.check_autostart_exists() \
+                        if hasattr(self, 'service_manager') else False
+        
+        # Сохраняем текущее состояние для сравнения в будущем
+        self._prev_autostart = autostart_active
+        self._prev_running = is_running
+        
+        # Обновляем UI
+        if is_running or autostart_active:
+            if hasattr(self, 'start_btn'):
+                self.start_btn.setVisible(False)
+            if hasattr(self, 'stop_btn'):
+                self.stop_btn.setVisible(True)
+        else:
+            if hasattr(self, 'start_btn'):
+                self.start_btn.setVisible(True)
+            if hasattr(self, 'stop_btn'):
+                self.stop_btn.setVisible(False)
+        
+        # Обновляем статус
+        if autostart_active:
+            self.process_status_value.setText("АВТОЗАПУСК АКТИВЕН")
+            self.process_status_value.setStyleSheet("color: purple; font-weight: bold;")
+        else:
+            if is_running:
+                self.process_status_value.setText("ВКЛЮЧЕН")
+                self.process_status_value.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                self.process_status_value.setText("ВЫКЛЮЧЕН")
+                self.process_status_value.setStyleSheet("color: red; font-weight: bold;")
+        
+        # ИЗМЕНЕНО: Оставляем кнопку выбора стратегии всегда видимой
+        # if hasattr(self, 'select_strategy_btn'):
+        #     self.select_strategy_btn.setVisible(not autostart_active)
+            
+    def delayed_dpi_start(self):
+        """Выполняет отложенный запуск DPI с проверкой наличия автозапуска"""
+        from log import log
+        
+        # ВАЖНО: Проверяем, инициализирован ли dpi_starter
+        if not hasattr(self, 'dpi_starter') or self.dpi_starter is None:
+            log("DPI Starter еще не инициализирован, откладываем запуск", level="WARNING")
+            # Повторяем попытку через секунду
+            QTimer.singleShot(100, self.delayed_dpi_start)
+            return
+        
+        # Сначала проверяем, активен ли автозапуск через планировщик задач
+        # ВАЖНО: делаем прямой запрос к планировщику задач Windows для гарантии актуальности данных
+        try:
+            task_name = "ZapretCensorliber"
+            check_cmd = f'schtasks /Query /TN "{task_name}" 2>nul'
+            result = subprocess.run(check_cmd, shell=True, capture_output=True)
+            
+            if result.returncode == 0:
+                log("Обнаружена активная задача планировщика ZapretCensorliber, пропускаем ручной запуск", level="INFO")
+                self.update_ui(running=True)
+                self.on_process_status_changed(self.dpi_starter.check_process_running(silent=True))
+                return
+        except Exception as e:
+            log(f"Ошибка при проверке задачи планировщика: {str(e)}", level="WARNING")
+        
+        # Затем проверяем, запущен ли уже процесс winws.exe
+        if self.dpi_starter.check_process_running():
+            log("Процесс winws.exe уже запущен, пропускаем ручной запуск", level="INFO")
+            self.update_ui(running=True)
+            return
+        
+        log("Выполняем запуск DPI", level="INFO")
+        self.dpi_starter.start_dpi()
+    
+    def finish_initialization(self):
+        """Завершает процесс инициализации"""
+        from log import log
+        
+        self.initializing = False
+        self.protected_process = False
+        
+        # Удаляем маркерный файл защиты после завершения инициализации
+        marker_file = os.path.join(os.path.dirname(WINWS_EXE), "process_protected.txt")
+        try:
+            if os.path.exists(marker_file):
+                os.remove(marker_file)
+        except Exception as e:
+            log(f"Не удалось удалить маркер защиты процесса: {str(e)}", level="WARNING")
+        
+        # Проверяем существование dpi_starter перед использованием
+        if hasattr(self, 'dpi_starter') and self.dpi_starter:
+            # Проверяем состояние процесса для обновления UI
+            if self.dpi_starter.check_process_running():
+                self.update_ui(running=True)
+            else:
+                # Если процесс не найден, повторяем запуск
+                log("Процесс не найден после инициализации, повторяем запуск", level="INFO")
+                
+                # Получаем стратегию из метки или используем последнюю сохраненную
+                strategy_name = None
+                if hasattr(self, 'current_strategy_name') and self.current_strategy_name:
+                    strategy_name = self.current_strategy_name
+                else:
+                    strategy_name = self.current_strategy_label.text()
+                    if strategy_name == "Не выбрана":
+                        strategy_name = get_last_strategy()
+                
+                log(f"Выбранная стратегия для запуска: {strategy_name}", level="INFO")
+                # Запускаем с задержкой 500 мс
+                QTimer.singleShot(500, lambda: self.dpi_starter.start_dpi(selected_mode=strategy_name))
+        else:
+            log("DPI Starter не инициализирован, пропускаем проверку процесса", level="WARNING")
+        
+        log("Процесс инициализации завершен", level="INFO")
+
+    def __init__(self, fast_load=False):
+        self.fast_load = fast_load
+
+        self.status_timer = None  # Удаляем стандартный таймер
+        self.process_monitor = None  # Будет инициализирован позже
+
+        super().__init__()
+
+        self.dpi_starter = DPIStarter(
+            winws_exe   = WINWS_EXE,
+            bin_folder  = BIN_FOLDER,
+            lists_folder= LISTS_FOLDER,
+            status_callback = self.set_status,
+            ui_callback     = self.update_ui
+        )
+
         self.setWindowTitle(f'Zapret v{APP_VERSION}')  # Добавляем версию в заголовок
 
-        # Проверяем настройку автоперезапуска Discord
-        self.discord_auto_restart = get_discord_restart_setting()
-        
-        # Инициализируем Discord Manager
-        self.discord_manager = DiscordManager(status_callback=self.set_status)
         self.first_start = True  # Флаг для отслеживания первого запуска
-        
 
         # Устанавливаем иконку приложения
-        icon_path = os.path.abspath(ICON_PATH)  # Используем абсолютный путь
-        print(f"Путь к иконке: {icon_path}, существует: {os.path.exists(icon_path)}")  # Отладка
-            
+        icon_path = os.path.abspath(ICON_PATH)
         if os.path.exists(icon_path):
             from PyQt5.QtGui import QIcon
             app_icon = QIcon(icon_path)
             self.setWindowIcon(app_icon)
             QApplication.instance().setWindowIcon(app_icon)
-            
-            # Для панели задач в Windows
-            try:
-                from PyQt5.QtWinExtras import QtWin
-                myappid = f'zapret.gui.app.{APP_VERSION}'  # Уникальный ID для Windows
-                QtWin.setCurrentProcessExplicitAppUserModelID(myappid)
-            except ImportError:
-                pass  # QtWinExtras может быть недоступен
-        else:
-            print(f"ОШИБКА: Файл иконки {icon_path} не найден")
-        # Определяем системную тему
-        windows_theme = get_windows_theme()
-        default_theme = "Светлая синяя" if windows_theme == "light" else "Темная синяя"
-
+        
+        # Инициализируем интерфейс
         self.init_ui()
-        self.hosts_manager = HostsManager(status_callback=self.set_status)
-
-        self.service_manager = ServiceManager(
-            winws_exe=WINWS_EXE,
-            bin_folder=BIN_FOLDER,
-            lists_folder=LISTS_FOLDER,
-            status_callback=self.set_status
+        
+        # Инициализируем атрибуты для работы со стратегиями
+        self.current_strategy_id = None
+        self.current_strategy_name = None
+        
+        # При быстрой загрузке откладываем тяжелые операции
+        if not self.fast_load:
+            self.initialize_managers_and_services()
+        
+        # Инициализируем системный трей после создания всех элементов интерфейса
+        self.tray_manager = SystemTrayManager(
+            parent=self,
+            icon_path=os.path.abspath(ICON_PATH),
+            app_version=APP_VERSION
         )
 
-        self.dpi_starter = DPIStarter(
-            winws_exe=WINWS_EXE,
-            bin_folder=BIN_FOLDER,
-            lists_folder=LISTS_FOLDER,
-            status_callback=self.set_status
-        )
+    def force_enable_combos(self):
+        """Принудительно включает комбо-боксы тем"""
+        try:
+            if hasattr(self, 'theme_combo'):
+                # Полное восстановление состояния комбо-бокса тем
+                self.theme_combo.setEnabled(True)
+                self.theme_combo.show()
+                self.theme_combo.setStyleSheet(f"{COMMON_STYLE} text-align: center;")
 
-        # Проверяем наличие службы и обновляем видимость кнопок автозапуска
-        service_running = self.service_manager.check_service_exists()
-        self.update_autostart_ui(service_running)
-        
-        # После обновления видимости кнопок автозапуска обновляем состояние запуска
-        self.update_ui(running=True)
-
-        from qt_material import apply_stylesheet
-        # Настраиваем тему
-        self.theme_combo.setCurrentText(default_theme)
-        theme_info = THEMES[default_theme]
-        apply_stylesheet(QApplication.instance(), theme=theme_info["file"])
-        self.status_label.setStyleSheet(f"color: {theme_info['status_color']};")
-        
-        # Устанавливаем цвет ссылки автора
-        status_color = theme_info['status_color']
-        self.author_label.setStyleSheet(f"""
-            color: {status_color}; 
-            opacity: 0.6; 
-            font-size: 9pt;
-        """)
-        self.author_label.setText(f'Автор: <a href="{AUTHOR_URL}" style="color:{status_color}">t.me/bypassblock</a>')
-        
-        
-        # Проверяем наличие необходимых файлов
-        self.set_status("Проверка файлов...")
-        if not os.path.exists(WINWS_EXE):
-            self.download_files_wrapper()
-
-        # Обновляем состояние кнопок автозапуска
-        service_running = self.service_manager.check_service_exists()
-        self.update_ui(service_running)
-        
-        # Запускаем первую стратегию
-        first_strategy = list(DPI_COMMANDS.keys())[0]
-        self.start_mode_combo.setCurrentText(first_strategy)
-        self.start_dpi()
-
-        QTimer.singleShot(3000, self.check_for_updates)  # Проверяем через 3 секунды после запуска
+            # Принудительное обновление UI
+            QApplication.processEvents()
+            
+            # Возвращаем True если комбо-бокс существует и активен
+            return hasattr(self, 'theme_combo') and self.theme_combo.isEnabled()
+        except Exception as e:
+            from log import log
+            log(f"Ошибка при активации комбо-бокса тем: {str(e)}")
+            return False
     
+    def delayed_combo_enabler(self):
+        from log import log
+        """Повторно проверяет и активирует комбо-боксы через таймер"""
+        if self.force_enable_combos():
+            # Если успешно активировали, останавливаемся
+            log("Комбо-бокс тем успешно активирован")
+        else:
+            # Если нет, повторяем через полсекунды
+            log("Повторная попытка активации комбо-бокса тем")
+            QTimer.singleShot(100, self.delayed_combo_enabler)
+
+    def perform_delayed_checks(self):
+        """Выполняет отложенные проверки после отображения UI"""
+        if self.fast_load:
+            # Первая попытка активации комбо-боксов
+            self.force_enable_combos()
+            
+            # Инициализируем менеджеры и службы
+            self.initialize_managers_and_services()
+            
+            # Вторая попытка активации комбо-боксов после инициализации
+            self.force_enable_combos()
+            
+            # Запускаем таймер для повторных проверок активации
+            # Это гарантирует, что комбо-боксы точно станут активными
+            QTimer.singleShot(100, self.delayed_combo_enabler)
+
+    def on_mode_changed(self, selected_mode):
+        """Обработчик смены режима в combobox"""
+        # Проверяем, активен ли автозапуск
+        if hasattr(self, 'service_manager') and self.service_manager.check_autostart_exists():
+            # Если автозапуск активен, игнорируем смену режима и восстанавливаем предыдущий выбор
+            from log import log
+            log("Смена стратегии недоступна при активном автозапуске", level="WARNING")
+            return
+        
+        # Обновляем отображение текущей стратегии
+        self.current_strategy_label.setText(selected_mode)
+
+        # Записываем время изменения стратегии
+        self.last_strategy_change_time = time.time()
+        
+        # Сохраняем выбранную стратегию в реестр
+        set_last_strategy(selected_mode)
+        
+        # Запускаем DPI с новым режимом - теперь это безопасно,
+        # так как stop.bat гарантированно остановит предыдущий процесс
+        self.dpi_starter.start_dpi(selected_mode=selected_mode)
+        
+        # Перезапускаем Discord только если:
+        # 1. Это не первый запуск
+        # 2. Автоперезапуск включен в настройках
+        from discord_restart import get_discord_restart_setting
+        if not self.first_start and get_discord_restart_setting():
+            self.discord_manager.restart_discord_if_running()
+        else:
+            self.first_start = False  # Сбрасываем флаг первого запуска
+            
+    def change_theme(self, theme_name):
+        """Изменяет тему приложения"""
+        success, message = self.theme_manager.apply_theme(theme_name)
+        if success:
+            self.set_status(f"Тема изменена на: {theme_name}")
+        else:
+            self.set_status(message)
+
+    def open_info(self):
+        """Opens the info website."""
+        try:
+            webbrowser.open(INFO_URL)
+            self.set_status("Открываю руководство...")
+        except Exception as e:
+            error_msg = f"Ошибка при открытии руководства: {str(e)}"
+            print(error_msg)
+            self.set_status(error_msg)
+
+    def open_folder(self):
+        """Opens the DPI folder."""
+        try:
+            subprocess.Popen('explorer.exe .', shell=True)
+        except Exception as e:
+            self.set_status(f"Ошибка при открытии папки: {str(e)}")
+
+    def open_general(self):
+        """Opens the list-general.txt file."""
+        try:
+            general_path = os.path.join(LISTS_FOLDER, 'other.txt')
+            # Проверяем существование файла и создаем его при необходимости
+            if not os.path.exists(general_path):
+                os.makedirs(os.path.dirname(general_path), exist_ok=True)
+                with open(general_path, 'w', encoding='utf-8') as f:
+                    f.write("# Добавьте сюда свои домены, по одному на строку\n")
+            
+            subprocess.Popen(f'notepad.exe "{general_path}"', shell=True)
+        except Exception as e:
+            self.set_status(f"Ошибка при открытии файла: {str(e)}")
+
+    def stop_dpi(self):
+        """Останавливает процесс DPI, используя прямые команды остановки"""
+        try:
+            from log import log
+            log("Остановка Zapret", level="INFO")
+            
+            # Используем прямые команды остановки вместо ненадежного stop.bat
+            process_stopped = False
+            
+            # Метод 1: taskkill (наиболее надежный)
+            log("Метод 1: Остановка через taskkill /F /IM winws.exe /T", level="INFO")
+            try:
+                subprocess.run(
+                    "taskkill /F /IM winws.exe /T", 
+                    shell=True, 
+                    check=False, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.PIPE
+                )
+                # Даем время системе на обработку команды
+                time.sleep(1)
+                if not self.dpi_starter.check_process_running():
+                    process_stopped = True
+                    log("Процесс успешно остановлен через taskkill", level="INFO")
+            except Exception as e:
+                log(f"Ошибка при использовании taskkill: {str(e)}", level="ERROR")
+            
+            # Если taskkill не помог, пробуем метод 2: PowerShell
+            if not process_stopped:
+                log("Метод 2: Остановка через PowerShell", level="INFO")
+                try:
+                    subprocess.run(
+                        'powershell -Command "Get-Process winws -ErrorAction SilentlyContinue | Stop-Process -Force"',
+                        shell=True,
+                        check=False,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    # Даем время системе на обработку команды
+                    time.sleep(1)
+                    if not self.dpi_starter.check_process_running():
+                        process_stopped = True
+                        log("Процесс успешно остановлен через PowerShell", level="INFO")
+                except Exception as e:
+                    log(f"Ошибка при использовании PowerShell: {str(e)}", level="ERROR")
+            
+            # Метод 3: wmic
+            if not process_stopped:
+                log("Метод 3: Остановка через wmic", level="INFO")
+                try:
+                    subprocess.run(
+                        "wmic process where name='winws.exe' call terminate",
+                        shell=True,
+                        check=False,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    # Даем время системе на обработку команды
+                    time.sleep(1)
+                    if not self.dpi_starter.check_process_running():
+                        process_stopped = True
+                        log("Процесс успешно остановлен через wmic", level="INFO")
+                except Exception as e:
+                    log(f"Ошибка при использовании wmic: {str(e)}", level="ERROR")
+            
+            # Дополнительно останавливаем службы
+            try:
+                log("Остановка служб WinDivert", level="INFO")
+                subprocess.run("sc stop windivert", shell=True, check=False)
+                subprocess.run("sc delete windivert", shell=True, check=False)
+            except Exception as e:
+                log(f"Ошибка при остановке служб: {str(e)}", level="ERROR")
+            
+            # Финальная проверка
+            if self.dpi_starter.check_process_running():
+                log("ВНИМАНИЕ: Не удалось остановить все процессы winws.exe", level="WARNING")
+                self.set_status("Не удалось полностью остановить Zapret")
+            else:
+                # Обновляем UI
+                self.update_ui(running=False)
+                self.set_status("Zapret успешно остановлен")
+                log("Запрет успешно остановлен", level="INFO")
+            
+            # Обновляем статус
+            self.on_process_status_changed(self.dpi_starter.check_process_running(silent=True))
+                
+        except Exception as e:
+            from log import log
+            log(f"Ошибка при остановке DPI: {str(e)}", level="ERROR")
+            self.set_status(f"Ошибка при остановке: {str(e)}")
+
+    def install_service(self) -> bool:
+        """
+        Вызывается из GUI при нажатии «Автозапуск».
+        Делегирует всё ServiceManager’у.
+        """
+        from log import log
+
+        # текущая стратегия
+        selected = getattr(self, "current_strategy_name", None) \
+               or self.current_strategy_label.text()
+        if selected == "Не выбрана":
+            selected = get_last_strategy()
+
+        if not selected:
+            QMessageBox.critical(self, "Ошибка", "Стратегия не выбрана")
+            self.set_status("Ошибка: стратегия не выбрана")
+            return False
+
+        log(f"Установка автозапуска для стратегии: {selected}", level="INFO")
+
+        ok = self.service_manager.install_autostart_by_strategy(
+                selected_mode=selected,
+                strategy_manager=self.strategy_manager)
+
+        if ok:
+            self.update_autostart_ui(True)
+            QMessageBox.information(self, "Успех",
+                                     f"Автозапуск настроен для режима:\n{selected}")
+            return True
+
+        QMessageBox.critical(self, "Ошибка",
+                             "Не удалось настроить автозапуск.\nСм. журнал.")
+        return False
+    
+    def remove_service(self):
+        """Удаляет службу DPI"""
+        if self.service_manager.remove_service():
+            self.update_autostart_ui(False)
+            self.on_process_status_changed(self.dpi_starter.check_process_running(silent=True))
+
+    def update_proxy_button_state(self):
+        """Обновляет состояние кнопки разблокировки в зависимости от наличия записей в hosts"""
+        if hasattr(self, 'proxy_button'):
+            is_active = self.hosts_manager.is_proxy_domains_active()
+            if is_active:
+                self.proxy_button.setText('Отключить разблокировку ChatGPT, Spotify, Notion')
+                self.proxy_button.setStyleSheet(BUTTON_STYLE.format("255, 93, 174"))  # Красноватый цвет
+            else:
+                self.proxy_button.setText('Разблокировать ChatGPT, Spotify, Notion и др.')
+                self.proxy_button.setStyleSheet(BUTTON_STYLE.format("218, 165, 32"))  # Золотистый цвет
+
+    def toggle_proxy_domains(self):
+        """Переключает состояние разблокировки: добавляет или удаляет записи из hosts"""
+        is_active = self.hosts_manager.is_proxy_domains_active()
+        
+        if is_active:
+            # Показываем информационное сообщение о отключении
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Question)
+            msg.setWindowTitle("Отключение разблокировки")
+            msg.setText("Отключить разблокировку сервисов через hosts-файл?")
+            
+            msg.setInformativeText(
+                "Это действие удалит добавленные ранее записи из файла hosts.\n\n"
+                "Для применения изменений ОБЯЗАТЕЛЬНО СЛЕДУЕТ закрыть и открыть веб-браузер и/или приложение Spotify!"
+            )
+            
+            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            result = msg.exec_()
+            
+            if result == QMessageBox.Yes:
+                if self.hosts_manager.remove_proxy_domains():
+                    self.set_status("Разблокировка отключена. Перезапустите браузер.")
+                    self.update_proxy_button_state()
+                else:
+                    self.set_status("Не удалось отключить разблокировку.")
+            else:
+                self.set_status("Операция отменена.")
+        else:
+            # Показываем информационное сообщение о включении
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Разблокировка через hosts-файл")
+            msg.setText("Установка соединения к proxy-серверу через файл hosts")
+            
+            msg.setInformativeText(
+                "Добавление этих сайтов в обычные списки Zapret не поможет их разблокировать, "
+                "так как доступ к ним заблокирован для территории РФ со стороны самих сервисов "
+                "(без участия Роскомнадзора).\n\n"
+                "Для применения изменений ОБЯЗАТЕЛЬНО СЛЕДУЕТ закрыть и открыть веб-браузер (не только сайт, а всю программу) и/или приложение Spotify!"
+            )
+            
+            msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+            result = msg.exec_()
+            
+            if result == QMessageBox.Ok:
+                if self.hosts_manager.add_proxy_domains():
+                    self.set_status("Разблокировка включена. Перезапустите браузер.")
+                    self.update_proxy_button_state()
+                else:
+                    self.set_status("Не удалось включить разблокировку.")
+            else:
+                self.set_status("Операция отменена.")
+
+    def open_connection_test(self):
+        """Открывает окно тестирования соединения."""
+        # Импортируем модуль тестирования
+        from connection_test import ConnectionTestDialog
+        dialog = ConnectionTestDialog(self)
+        dialog.exec_()
+
+    def update_other_list(self):
+        """Обновляет файл списка other.txt с удаленного сервера"""
+        from update_other import update_other_list as _update_other_list
+        _update_other_list(parent=self, status_callback=self.set_status)
+
+    def open_dns_settings(self):
+        """Открывает диалог настройки DNS-серверов"""
+        try:
+            # Показываем индикатор в статусной строке
+            self.set_status("Открываем настройки DNS (загрузка данных)...")
+        
+            # Передаем текущий стиль в диалог
+            dns_dialog = DNSSettingsDialog(self, common_style=COMMON_STYLE)
+            dns_dialog.exec_()
+            
+            # Сбрасываем статус после закрытия диалога
+            self.set_status("Настройки DNS закрыты")
+        except Exception as e:
+            error_msg = f"Ошибка при открытии настроек DNS: {str(e)}"
+            from log import log
+            log(f"Ошибка при открытии настроек DNS: {str(e)}", level="ERROR")
+            self.set_status(error_msg)
+
+    def update_winws_exe(self):
+        """Обновляет файл winws.exe до последней версии с GitHub"""
+        from update_winws import update_winws_exe as _update_winws_exe
+        _update_winws_exe(self)
+
+    def show_logs(self):
+        """Shows the application logs in a dialog"""
+        try: 
+            from log import get_log_content, LogViewerDialog
+            log_content = get_log_content()
+            log_dialog = LogViewerDialog(self, log_content)
+            log_dialog.exec_()
+        except Exception as e:
+            self.set_status(f"Ошибка при открытии журнала: {str(e)}")
+
     def init_ui(self):
         """Creates the user interface elements."""
         self.setStyleSheet(STYLE_SHEET)
@@ -436,7 +1119,7 @@ class LupiDPIApp(QWidget):
         line.setFrameShadow(QFrame.Sunken)
         layout.addWidget(line)
 
-        # Статусная строка
+        ################# Статус программы #################
         status_layout = QVBoxLayout()
         
         # Статус запуска программы
@@ -453,29 +1136,48 @@ class LupiDPIApp(QWidget):
 
         layout.addLayout(status_layout)
 
-        self.start_mode_combo = QComboBox(self)
-        self.start_mode_combo.setStyleSheet(f"{COMMON_STYLE} text-align: center;")
-        self.start_mode_combo.addItems(DPI_COMMANDS.keys())
-        self.start_mode_combo.currentTextChanged.connect(self.on_mode_changed)
-        layout.addWidget(self.start_mode_combo)
+        ############# Стратегия обхода блокировок #############
+        strategy_layout = QVBoxLayout()
 
-        # --- Создаем сетку для размещения кнопок в два столбца ---
+        # Сначала добавляем метку с текущей стратегией на всю ширину
+        strategy_header = QLabel("Текущая стратегия:")
+        strategy_header.setStyleSheet(f"{COMMON_STYLE} font-weight: bold;")
+        strategy_header.setAlignment(Qt.AlignCenter)
+        strategy_layout.addWidget(strategy_header)
+
+        # Метка с текущей стратегией (увеличиваем шрифт и делаем его заметным)
+        self.current_strategy_label = QLabel("Не выбрана")
+        self.current_strategy_label.setStyleSheet(f"{COMMON_STYLE} font-weight: bold; font-size: 12pt; color: #0077ff;")
+        self.current_strategy_label.setAlignment(Qt.AlignCenter)
+        self.current_strategy_label.setWordWrap(True)  # Разрешаем перенос длинных названий
+        self.current_strategy_label.setMinimumHeight(40)  # Достаточная высота для двух строк текста
+        strategy_layout.addWidget(self.current_strategy_label)
+
+        # Добавляем небольшой интервал между меткой и кнопкой
+        strategy_layout.addSpacing(5)
+
+        # Затем добавляем кнопку выбора стратегии
+        self.select_strategy_btn = RippleButton('Сменить стратегию обхода блокировок...', self, "0, 119, 255")
+        self.select_strategy_btn.setStyleSheet(BUTTON_STYLE.format("0, 119, 255"))
+        self.select_strategy_btn.setMinimumHeight(BUTTON_HEIGHT)
+        self.select_strategy_btn.clicked.connect(self.select_strategy)
+        strategy_layout.addWidget(self.select_strategy_btn)
+
+        layout.addLayout(strategy_layout)
+
+        ################## Кнопки управления #################
         from PyQt5.QtWidgets import QGridLayout
-        button_grid = QGridLayout()
 
-        # Создаем кнопку Запустить
         self.start_btn = RippleButton('Запустить Zapret', self, "54, 153, 70")
         self.start_btn.setStyleSheet(BUTTON_STYLE.format("54, 153, 70"))
         self.start_btn.setMinimumHeight(BUTTON_HEIGHT)
-        self.start_btn.clicked.connect(self.start_dpi)
+        self.start_btn.clicked.connect(self.dpi_starter.start_dpi)
 
-        # Создаем кнопку Остановить
         self.stop_btn = RippleButton('Остановить Zapret', self, "255, 93, 174")
         self.stop_btn.setStyleSheet(BUTTON_STYLE.format("255, 93, 174"))
         self.stop_btn.setMinimumHeight(BUTTON_HEIGHT)
         self.stop_btn.clicked.connect(self.stop_dpi)
 
-        # Создаем кнопки автозапуска
         self.autostart_enable_btn = RippleButton('Вкл. автозапуск', self, "54, 153, 70")
         self.autostart_enable_btn.setStyleSheet(BUTTON_STYLE.format("54, 153, 70"))
         self.autostart_enable_btn.setMinimumHeight(BUTTON_HEIGHT)
@@ -486,8 +1188,8 @@ class LupiDPIApp(QWidget):
         self.autostart_disable_btn.setMinimumHeight(BUTTON_HEIGHT)
         self.autostart_disable_btn.clicked.connect(self.remove_service)
 
-        # Добавляем все кнопки напрямую в сетку вместо использования контейнеров
-        button_grid = QGridLayout()
+        self.button_grid = QGridLayout()          # ← сохранить как атрибут
+        button_grid = self.button_grid            # локальное alias, чтобы не менять дальше
 
         # Устанавливаем равномерное распределение пространства между колонками
         button_grid.setColumnStretch(0, 1)  # Левая колонка растягивается с коэффициентом 1
@@ -504,24 +1206,27 @@ class LupiDPIApp(QWidget):
         self.stop_btn.setVisible(False)
         self.autostart_enable_btn.setVisible(True)
         self.autostart_disable_btn.setVisible(False)
-        
+
         # Определяем кнопки
         button_configs = [            
             ('Открыть папку Zapret', self.open_folder, "0, 119, 255", 2, 0),
             ('Тест соединения', self.open_connection_test, "0, 119, 255", 2, 1),
             ('Обновить список сайтов', self.update_other_list, "0, 119, 255", 3, 0),
             ('Добавить свои сайты', self.open_general, "0, 119, 255", 3, 1),
-            ('Разблокировать ChatGPT, Spotify, Notion и др.', self.some_method_that_calls_add_proxy_domains, "218, 165, 32", 4, 0, 2),  # col_span=2
-            ('Что это такое?', self.open_info, "38, 38, 38", 5, 0, 2),
-            ('Проверить обновления', self.check_for_updates, "38, 38, 38", 6, 0, 2)  # col_span=2
+            ('Обновить winws.exe', self.update_winws_exe, "0, 119, 255", 4, 0),
+            ('Настройка DNS-серверов', self.open_dns_settings, "0, 119, 255", 4, 1),
+            ('Разблокировать ChatGPT, Spotify, Notion и др.', self.toggle_proxy_domains, "218, 165, 32", 5, 0, 2),  # col_span=2
+            ('Что это такое?', self.open_info, "38, 38, 38", 6, 0),
+            ('Логи', self.show_logs, "38, 38, 38", 6, 1),  # col_span=2
+            ('Проверить обновления', lambda: check_for_update(parent=self, status_callback=self.set_status), "38, 38, 38", 7, 0, 2),  # col_span=2
         ]
 
         # Создаем и размещаем кнопки в сетке
         for button_info in button_configs:
             text, callback, color, row, col = button_info[:5]
             
-            # Определяем col_span (либо из кортежа, либо по умолчанию)
-            col_span = button_info[5] if len(button_info) > 5 else (2 if (row == 4 or row == 5 or row == 6) else 1)
+            # Определяем col_span
+            col_span = button_info[5] if len(button_info) > 5 else (2 if (row == 10) else 1)
             
             btn = RippleButton(text, self, color)
             btn.setStyleSheet(BUTTON_STYLE.format(color))
@@ -529,6 +1234,10 @@ class LupiDPIApp(QWidget):
             btn.clicked.connect(callback)
             
             button_grid.addWidget(btn, row, col, 1, col_span)
+            
+            # Сохраняем ссылку на кнопку разблокировки
+            if 'ChatGPT' in text:
+                self.proxy_button = btn
             
             # Сохраняем ссылку на кнопку запуска
             if text == 'Запустить Zapret':
@@ -546,6 +1255,7 @@ class LupiDPIApp(QWidget):
         self.theme_combo.setStyleSheet(f"{COMMON_STYLE} text-align: center;")
         self.theme_combo.addItems(THEMES.keys())
         self.theme_combo.currentTextChanged.connect(self.change_theme)
+
         theme_layout.addWidget(self.theme_combo)
         layout.addLayout(theme_layout)
 
@@ -564,458 +1274,101 @@ class LupiDPIApp(QWidget):
         spacer = QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding)
         layout.addItem(spacer)
 
-        # Добавляем ссылку на авторство
         self.author_label = QLabel('Автор: <a href="https://t.me/bypassblock">t.me/bypassblock</a>')
+        self.support_label = QLabel('Поддержка: <a href="https://t.me/youtubenotwork">t.me/youtubenotwork</a>\n или на почту <a href="mail:fuckyourkn@yandex.ru">fuckyourkn@yandex.ru</a>')
+        self.bol_van_url = QLabel('<a href="https://github.com/bol-van">github.com/bol-van</a>')
+
+        self.bol_van_url.setOpenExternalLinks(True)  # Разрешаем открытие внешних ссылок
+        self.bol_van_url.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.bol_van_url)
+
         self.author_label.setOpenExternalLinks(True)  # Разрешаем открытие внешних ссылок
         self.author_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.author_label)
+
+        self.support_label.setOpenExternalLinks(True)  # Разрешаем открытие внешних ссылок
+        self.support_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.support_label)
         
         self.setLayout(layout)
+        self.setMinimumSize(WIDTH, HEIGHT) # Минимальный размер окна
 
-        self.status_timer = QTimer()
-        self.status_timer.timeout.connect(self.check_process_status)
-        self.status_timer.start(2000)  # Проверка каждые 1 секунды
-
-    def on_mode_changed(self, selected_mode):
-        """Обработчик смены режима в combobox"""
-        # Перезапускаем Discord только если это не первый запуск
-        if not self.first_start:
-            self.discord_manager.restart_discord_if_running()
-        else:
-            self.first_start = False  # Сбрасываем флаг первого запуска
-        
-        # Запускаем DPI с новым режимом
-        self.start_dpi()
-
-    def change_theme(self, theme_name):
-        """Changes the application's theme."""
-        if theme_name == "РКН Тян":
-            # Показываем специальное сообщение для темы РКН Тян
-            QMessageBox.information(self, "РКН Тян", 
-                                "Тема РКН Тян появится скоро...\n\nОставайтесь на связи!")
+    def init_tray_if_needed(self):
+        """Инициализирует системный трей, если он еще не был инициализирован"""
+        if not hasattr(self, 'tray_manager') or self.tray_manager is None:
+            from log import log
+            log("Инициализация менеджера системного трея", level="INFO")
             
-            # Возвращаем combobox к предыдущей теме (если была выбрана)
-            current_index = self.theme_combo.findText(theme_name)
-            if current_index > 0:
-                self.theme_combo.setCurrentIndex(0)  # Устанавливаем первую тему по умолчанию
-            return
-            
-        if theme_name in THEMES:
-            try:
-                from qt_material import apply_stylesheet
-                # Получаем информацию о теме
-                theme_info = THEMES[theme_name]
-                # Применяем тему
-                apply_stylesheet(QApplication.instance(), theme=theme_info["file"])
-                # Обновляем цвет текста статуса
-                self.status_label.setStyleSheet(f"color: {theme_info['status_color']};")
+            # Проверяем наличие пути к иконке
+            icon_path = os.path.abspath(ICON_PATH)
+            if not os.path.exists(icon_path):
+                log(f"Предупреждение: иконка {icon_path} не найдена", level="WARNING")
                 
-                # Обновляем цвет ссылки автора - используем тот же цвет для всего текста
-                status_color = theme_info['status_color']
-                self.author_label.setStyleSheet(f"""
-                    color: {status_color}; 
-                    opacity: 0.6; 
-                    font-size: 9pt;
-                """)
-                # Используем HTML для установки цвета ссылки
-                self.author_label.setText(f'Автор: <a href="https://t.me/bypassblock" style="color:{status_color}">t.me/bypassblock</a>')
-                
-                self.set_status(f"Тема изменена на: {theme_name}")
-            except Exception as e:
-                self.set_status(f"Ошибка при смене темы: {str(e)}")
-
-    def open_info(self):
-        """Opens the info website."""
-        try:
-            webbrowser.open(INFO_URL)
-            self.set_status("Открываю руководство...")
-        except Exception as e:
-            error_msg = f"Ошибка при открытии руководства: {str(e)}"
-            print(error_msg)
-            self.set_status(error_msg)
-
-    def open_folder(self):
-        """Opens the DPI folder."""
-        try:
-            subprocess.Popen('explorer.exe .', shell=True)
-        except Exception as e:
-            self.set_status(f"Ошибка при открытии папки: {str(e)}")
-    
-    def stop_dpi(self):
-        """Останавливает процесс DPI."""
-        # Устанавливаем флаг намеренной остановки
-        self.manually_stopped = True
-        
-        if self.dpi_starter.stop_dpi():
-            self.update_ui(running=False)
-        else:
-            # Показываем сообщение об ошибке, если метод вернул False
-            QMessageBox.warning(self, "Невозможно остановить", 
-                            "Невозможно остановить Zapret, пока установлена служба.\n\n"
-                            "Пожалуйста, сначала отключите автозапуск (нажмите на кнопку 'Отключить автозапуск').")
-        self.check_process_status()  # Обновляем статус в интерфейсе
-
-    def start_dpi(self):
-        """Запускает DPI с текущей конфигурацией, если служба ZapretCensorliber не установлена"""
-        # Используем существующий метод проверки службы из ServiceManager
-        service_found = self.service_manager.check_service_exists()
-        
-        if service_found:
-            # При необходимости здесь можно показать предупреждение
-            return
-            
-        # Если службы нет, запускаем DPI
-        selected_mode = self.start_mode_combo.currentText()
-        success = self.dpi_starter.start_dpi(selected_mode, DPI_COMMANDS, DOWNLOAD_URLS)
-        if success:
-            self.update_ui(running=True)
-            # Проверяем, не завершился ли процесс сразу после запуска
-            QTimer.singleShot(3000, self.check_if_process_started_correctly)
-        else:
-            self.check_process_status()  # Обновляем статус в интерфейсе
-
-    def check_if_process_started_correctly(self):
-        """Проверяет, что процесс успешно запустился и продолжает работать"""
-        # Предотвращаем показ ошибки, если процесс был остановлен намеренно
-        if hasattr(self, 'manually_stopped') and self.manually_stopped:
-            self.manually_stopped = False  # Сбрасываем флаг
-            return
-            
-        if not self.dpi_starter.check_process_running():
-            # Если процесс не запущен через 3 секунды после старта, показываем ошибку
-            QMessageBox.critical(self, "Ошибка запуска", 
-                            "Процесс winws.exe запустился, но затем неожиданно завершился.\n\n"
-                            "Это может быть вызвано:\n"
-                            "1. Блокировкой антивирусом\n"
-                            "2. Конфликтом с другим программным обеспечением\n"
-                            f"3. Какие-то файлы удалены из программы\n\n"
-                            "Создайте исключение в антивирусе.")
-            self.update_ui(running=False)
-        
-        # В любом случае обновляем статус
-        self.check_process_status()
-        
-    def open_general(self):
-        """Opens the list-general.txt file."""
-        try:
-            general_path = os.path.join(LISTS_FOLDER, 'other.txt')
-            # Проверяем существование файла и создаем его при необходимости
-            if not os.path.exists(general_path):
-                os.makedirs(os.path.dirname(general_path), exist_ok=True)
-                with open(general_path, 'w', encoding='utf-8') as f:
-                    f.write("# Добавьте сюда свои домены, по одному на строку\n")
-            
-            subprocess.Popen(f'notepad.exe "{general_path}"', shell=True)
-        except Exception as e:
-            self.set_status(f"Ошибка при открытии файла: {str(e)}")
-
-    def install_service(self):
-        """Устанавливает службу DPI с текущей конфигурацией"""
-        selected_config = self.start_mode_combo.currentText()
-        if selected_config not in DPI_COMMANDS:
-            self.set_status(f"Недопустимая конфигурация: {selected_config}")
-            return
-            
-        # Получаем аргументы командной строки для выбранной конфигурации
-        command_args = DPI_COMMANDS.get(selected_config, [])
-        
-        # Устанавливаем службу через ServiceManager и обновляем UI, если успешно
-        if self.service_manager.install_service(command_args, config_name=selected_config):
-            self.update_autostart_ui(True)
-            self.check_process_status()
-
-    def remove_service(self):
-        """Удаляет службу DPI"""
-        if self.service_manager.remove_service():
-            self.update_autostart_ui(False)
-            self.check_process_status()
-
-    def update_ui(self, running):
-        """Updates the UI based on the running state."""
-        # Обновляем только кнопки запуска/остановки
-        self.start_btn.setVisible(not running)
-        self.stop_btn.setVisible(running)
-
-    def update_autostart_ui(self, service_running):
-        """Обновляет состояние кнопок включения/отключения автозапуска"""
-        self.autostart_enable_btn.setVisible(not service_running)
-        self.autostart_disable_btn.setVisible(service_running)
-
-    def set_status(self, text):
-        """Sets the status text."""
-        self.status_label.setText(text)
-
-    ################################# ПРОВЕРЯТЬ ЗАПУЩЕН ЛИ ПРОЦЕСС #################################
-    def check_process_status(self):
-        """Проверяет статус процесса и обновляет UI"""
-        # Запоминаем текущее состояние
-        previous_running = self.process_status_value.text() == "ВКЛЮЧЕН"
-        previous_service = self.autostart_disable_btn.isVisible()
-        
-        # Проверяем статус службы
-        service_running = self.service_manager.check_service_exists()
-        
-        # Проверяем статус процесса
-        process_running = self.dpi_starter.check_process_running()
-        
-        # Обновляем UI только если состояние изменилось
-        if previous_service != service_running:
-            self.update_autostart_ui(service_running)
-        
-        if previous_running != process_running:
-            if process_running:
-                self.process_status_value.setText("ВКЛЮЧЕН")
-                self.process_status_value.setStyleSheet("color: green; font-weight: bold;")
-                self.update_ui(running=True)
-            else:
-                self.process_status_value.setText("ВЫКЛЮЧЕН")
-                self.process_status_value.setStyleSheet("color: red; font-weight: bold;")
-                self.update_ui(running=False)
-
-    ################################# hosts #################################
-    def some_method_that_calls_add_proxy_domains(self):
-        self.hosts_manager.add_proxy_domains()
-
-    ################################# test #################################
-    def open_connection_test(self):
-        """Открывает окно тестирования соединения."""
-        try:
-            # Проверяем наличие требуемого модуля requests
-            try:
-                import requests
-            except ImportError:
-                self.set_status("Установка необходимых зависимостей...")
-                subprocess.run([sys.executable, "-m", "pip", "install", "requests"], 
-                            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                self.set_status("Зависимости установлены")
-            
-            # Импортируем модуль тестирования
-            from connection_test import ConnectionTestDialog
-            dialog = ConnectionTestDialog(self)
-            dialog.exec_()
-            
-        except Exception as e:
-            error_msg = f"Ошибка при запуске тестирования: {str(e)}"
-            print(error_msg)
-            self.set_status(error_msg)
-            
-    ################################# other update #################################
-    def update_other_list(self):
-        """Обновляет файл списка other.txt с удаленного сервера"""
-        try:
-            self.set_status("Обновление списка доменов...")
-            
-            # Проверка наличия модуля requests
-            try:
-                import requests
-            except ImportError:
-                self.set_status("Установка зависимостей...")
-                subprocess.run([sys.executable, "-m", "pip", "install", "requests"], 
-                            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                import requests
-            
-            # Путь к локальному файлу
-            other_path = os.path.join(LISTS_FOLDER, 'other.txt')
-            
-            # Создаем директорию, если она не существует
-            os.makedirs(os.path.dirname(other_path), exist_ok=True)
-            
-            # Скачиваем файл с сервера
-            self.set_status("Загрузка списка доменов...")
-            response = requests.get(OTHER_LIST_URL, timeout=10)
-            
-            if response.status_code == 200:
-                # Обрабатываем полученное содержимое
-                domains = []
-                for line in response.text.splitlines():
-                    line = line.strip()  # Удаляем пробелы в начале и конце строки
-                    if line:  # Пропускаем пустые строки
-                        domains.append(line)
-                
-                # Собираем все домены в один текст, каждый на новой строке БЕЗ пустых строк
-                downloaded_content = "\n".join(domains)
-                
-                # Читаем текущий файл, если он существует
-                current_content = ""
-                if os.path.exists(other_path):
-                    with open(other_path, 'r', encoding='utf-8') as f:
-                        # Также обрабатываем существующее содержимое
-                        current_domains = []
-                        for line in f:
-                            line = line.strip()
-                            if line:
-                                current_domains.append(line)
-                        current_content = "\n".join(current_domains)
-                
-                # Если файла нет или содержимое отличается
-                if not os.path.exists(other_path) or current_content != downloaded_content:
-                    # Делаем резервную копию текущего файла
-                    if os.path.exists(other_path):
-                        backup_path = other_path + '.bak'
-                        shutil.copy2(other_path, backup_path)
-                    
-                    # Сохраняем новый файл (без пустых строк)
-                    with open(other_path, 'w', encoding='utf-8') as f:
-                        f.write(downloaded_content)
-                        
-                    self.set_status("Список успешно обновлен")
-                    QMessageBox.information(self, "Успешно", "Список доменов успешно обновлен")
-                else:
-                    self.set_status("Список уже актуален")
-                    QMessageBox.information(self, "Информация", "Список доменов уже актуален")
-            else:
-                self.set_status(f"Ошибка при загрузке списка доменов: {response.status_code}")
-                QMessageBox.warning(self, "Ошибка", f"Не удалось получить список доменов с сервера. Код ответа: {response.status_code}")
-                
-        except Exception as e:
-            error_msg = f"Ошибка при обновлении списка доменов: {str(e)}"
-            print(error_msg)
-            self.set_status(error_msg)
-            QMessageBox.critical(self, "Ошибка", error_msg)
-
-    def moveEvent(self, event):
-        """Вызывается при перемещении окна"""
-        # Временно останавливаем таймер
-        was_active = self.status_timer.isActive()
-        if was_active:
-            self.status_timer.stop()
-        
-        # Выполняем стандартную обработку события
-        super().moveEvent(event)
-        
-        # Перезапускаем таймер после небольшой задержки
-        if was_active:
-            QTimer.singleShot(200, lambda: self.status_timer.start())
-
-    def keyPressEvent(self, event):
-        """Обрабатывает нажатия клавиш для секретных команд"""
-        # Добавляем символ к секретной последовательности
-        key_text = event.text().lower()
-        self._secret_input += key_text
-        
-        # Добавим отладочную информацию
-        print(f"Введено: {key_text}, Буфер: {self._secret_input}")
-        
-        # Проверяем наличие секретного слова "ркн" (русские буквы)
-        if "ркн" in self._secret_input:
-            print("Секретный код обнаружен! Переключаем настройку Discord")
-            self._secret_input = ""  # Сбрасываем буфер
-            self.toggle_discord_restart()
-            # Предотвращаем дальнейшую обработку события
-            return
-        
-        # Ограничиваем длину строки
-        if len(self._secret_input) > 20:
-            self._secret_input = self._secret_input[-10:]
-        
-        # Стандартная обработка события
-        super().keyPressEvent(event)
-
-    def toggle_discord_restart(self):
-        """Переключает настройку автоматического перезапуска Discord"""
-        current_setting = get_discord_restart_setting()
-        
-        # Показываем диалог подтверждения
-        if current_setting:
-            # Если сейчас включено, предлагаем выключить
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Warning)
-            msg.setWindowTitle("Отключение автоперезапуска Discord")
-            msg.setText("Вы действительно хотите отключить автоматический перезапуск Discord?")
-            
-            msg.setInformativeText(
-                "Если вы отключите эту функцию, вам придется самостоятельно перезапускать "
-                "Discord после смены стратегии обхода блокировок.\n\n"
-                "Это может привести к проблемам с подключением к голосовым каналам и "
-                "нестабильной работе Discord.\n\n"
-                "Вы понимаете последствия своих действий?"
+            # Инициализируем трей
+            from tray import SystemTrayManager
+            self.tray_manager = SystemTrayManager(
+                parent=self,
+                icon_path=icon_path,
+                app_version=APP_VERSION
             )
             
-            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            choice = msg.exec_()
+            # Проверяем, запущены ли мы с аргументом --tray
+            if len(sys.argv) > 1 and sys.argv[1] == "--tray":
+                log("Программа запущена с аргументом --tray, скрываем окно", level="INFO")
+                # Гарантируем, что окно скрыто
+                self.hide()
             
-            if choice == QMessageBox.Yes:
-                # Отключаем автоперезапуск
-                set_discord_restart_setting(False)
-                self.discord_auto_restart = False
-                self.set_status("Автоматический перезапуск Discord отключен")
-                QMessageBox.information(self, "Настройка изменена", 
-                                    "Автоматический перезапуск Discord отключен.\n\n"
-                                    "Теперь вам нужно будет самостоятельно перезапускать Discord "
-                                    "после смены стратегии обхода блокировок.")
-        else:
-            # Включаем автоперезапуск (без дополнительного подтверждения)
-            set_discord_restart_setting(True)
-            self.discord_auto_restart = True
-            self.set_status("Автоматический перезапуск Discord включен")
-            QMessageBox.information(self, "Настройка изменена", 
-                                "Автоматический перезапуск Discord снова включен.")
-    
-    def on_mode_changed(self, selected_mode):
-        """Обработчик смены режима в combobox"""
-        # Перезапускаем Discord только если:
-        # 1. Это не первый запуск
-        # 2. Автоперезапуск включен в настройках
-        if not self.first_start and self.discord_auto_restart:
-            self.discord_manager.restart_discord_if_running()
-        else:
-            self.first_start = False  # Сбрасываем флаг первого запуска
-        
-        # Запускаем DPI с новым режимом
-        self.start_dpi()
-
-def check_if_in_archive():
-    """
-    Проверяет, находится ли EXE-файл в временной директории,
-    что обычно характерно для распаковки из архива.
-    """
-    try:
-        exe_path = os.path.abspath(sys.executable)
-        print(f"DEBUG: Executable path: {exe_path}")
-
-        # Получаем пути к системным временным директориям
-        temp_env = os.environ.get("TEMP", "")
-        tmp_env = os.environ.get("TMP", "")
-        temp_dirs = [temp_env, tmp_env]
-        
-        for temp_dir in temp_dirs:
-            if temp_dir and exe_path.lower().startswith(os.path.abspath(temp_dir).lower()):
-                print("DEBUG: EXE запущен из временной директории:", temp_dir)
-                return True
-        return False
-    except Exception as e:
-        print(f"DEBUG: Ошибка при проверке расположения EXE: {str(e)}")
-        return False
-
-def contains_special_chars(path):
-    """Проверяет, содержит ли путь специальные символы"""
-    special_chars = '()[]{}^=;!\'"+<>|&'
-    return any(c in path for c in special_chars)
-
-def check_path_for_special_chars():
-    """Проверяет пути программы на наличие специальных символов"""
-    current_path = os.path.abspath(os.getcwd())
-    exe_path = os.path.abspath(sys.executable)
-    
-    paths_to_check = [current_path, exe_path, BIN_FOLDER, LISTS_FOLDER]
-    
-    for path in paths_to_check:
-        if contains_special_chars(path):
-            error_message = (
-                f"Путь содержит специальные символы: {path}\n\n"
-                "Программа не может корректно работать в папке со специальными символами (цифры, точки, скобки, запятые и т.д.).\n"
-                "Пожалуйста, переместите программу в папку без специальных символов в пути (например, C:\\zapretgui) и запустите её снова."
-            )
-            QMessageBox.critical(None, "Критическая ошибка", error_message)
-            print(f"ERROR: Путь содержит специальные символы: {path}")
-            return True
-    return False
-
 def main():
+    # ---- single instance check -------------------------------------------
+    from single_instance import create_mutex, release_mutex
+    mutex_handle, already_running = create_mutex("ZapretSingleInstance")
+
+    if already_running:
+        # Любое действие на ваш вкус:
+        ctypes.windll.user32.MessageBoxW(
+            None, "Экземпляр Zapret уже запущен и/или работает в трее!",
+            "Zapret", 0x40)          # MB_ICONINFORMATION
+        sys.exit(0)
+
+    # Освобождаем mutex перед выходом приложения
+    import atexit
+    atexit.register(lambda: release_mutex(mutex_handle))
+    # ----------------------------------------------------------------------
+    
+    try:
+        from log import log
+        log("========================= ZAPRET ЗАПУСКАЕТСЯ ========================", level="START")
+    except Exception as e:
+        log(f"Failed to initialize logger: {e}", level="ERROR")
+
+    start_in_tray = False
+
+    # Проверяем наличие и удаляем устаревшие задачи планировщика
+    remove_scheduler_tasks()
+    
+    try:
+        from check_start import display_startup_warnings
+        can_continue = display_startup_warnings()
+        if not can_continue:
+            sys.exit(1)
+
+        remove_windows_terminal_if_win11()  # Удаляем терминал Windows 11, если он установлен
+        
+        app = QApplication(sys.argv)
+        
+    except Exception as e:
+        log(f"Failed to perform startup checks: {e}", level="ERROR")
+        # Показываем ошибку пользователю
+        QMessageBox.critical(None, "Ошибка при проверке запуска", 
+                         f"Не удалось выполнить проверки запуска: {str(e)}")
+        sys.exit(1)
+    
     if len(sys.argv) > 1:
         if sys.argv[1] == "--version":
-            print(APP_VERSION)
+            log(APP_VERSION)
             sys.exit(0)
+        elif sys.argv[1] == "--tray":
+            start_in_tray = True
         elif sys.argv[1] == "--update" and len(sys.argv) > 3:
             # Режим обновления: updater.py запускает main.py --update old_exe new_exe
             old_exe = sys.argv[2]
@@ -1036,7 +1389,7 @@ def main():
                 # Запускаем обновленное приложение
                 subprocess.Popen([old_exe])
             except Exception as e:
-                print(f"Ошибка при обновлении: {str(e)}")
+                log(f"Ошибка при обновлении: {str(e)}", level="ERROR")
             finally:
                 # Удаляем временный файл
                 try:
@@ -1044,36 +1397,52 @@ def main():
                 except:
                     pass
                 sys.exit(0)
-    
-    # Стандартный запуск
-    app = QApplication(sys.argv)
 
-    # Проверка на запуск из временной директории
-    if check_if_in_archive():
-        error_message = (
-            "Приложение не может быть запущено из временной директории!\n\n"
-            "Пожалуйста, распакуйте архив полностью в отдельную папку и запустите программу."
-        )
-        QMessageBox.critical(None, "Ошибка запуска", error_message)
-        print("ERROR: Ошибка check_if_in_archive")
-        sys.exit(1)
+    # ВАЖНЫЙ МОМЕНТ - проверяем админские права до создания окна
+    if not is_admin():
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv[1:]), None, 1)
+        sys.exit(0)
     
-    # Проверка на специальные символы в пути
-    if check_path_for_special_chars():
-        # Функция уже показывает сообщение об ошибке, просто выходим
-        sys.exit(1)
-    
-    # Далее создаем и запускаем основное окно
     try:
-        if is_admin():
-            window = LupiDPIApp()
-            window.show()
-            sys.exit(app.exec_())
+        # Создаем окно с параметром fast_load=True
+        window = LupiDPIApp(fast_load=True)
+
+        # Инициализируем системный трей до показа окна
+        window.init_tray_if_needed()
+
+        # Важно: если запуск в трее, явно скрываем окно
+        if start_in_tray:
+            log("Запуск приложения скрыто в трее", level="TRAY")
+            # Не показываем окно совсем при запуске в трее
         else:
-            ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
-            sys.exit(0)
+            log("Запуск приложения в обычном режиме", level="TRAY")
+            window.show()
+        
+        # удаляем устаревшую службу ZapretCensorliber, если она ещё есть
+        def _remove_legacy_service():
+            if hasattr(window, "service_manager") and window.service_manager:
+                window.service_manager.remove_legacy_windows_service()
+                log("Входим в службу", level="SERVICE")
+            else:
+                log("Менеджер служб не инициализирован", level="SERVICE")
+
+        QTimer.singleShot(0, _remove_legacy_service)        
+        # Выполняем дополнительные проверки ПОСЛЕ отображения UI
+        window.perform_delayed_checks()
+        
+        # Если запуск в трее, уведомляем пользователя
+        if start_in_tray and hasattr(window, 'tray_manager'):
+            window.tray_manager.show_notification("Zapret работает в трее", 
+                                                    "Приложение запущено в фоновом режиме")
+                    
+        # Дополнительная гарантия, что комбо-боксы будут активны
+        window.force_enable_combos()
+
+        sys.exit(app.exec_())
+        
     except Exception as e:
         QMessageBox.critical(None, "Ошибка", f"Произошла ошибка: {str(e)}")
+        log(f"Ошибка при запуске приложения: {str(e)}", level="ERROR")
         sys.exit(1)
 
 if __name__ == "__main__":
