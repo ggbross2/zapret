@@ -30,7 +30,7 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --noconfirm --onefile --windowed --icon zapret.ico main.py
+        pyinstaller --noconfirm --onefile --console --hidden-import=win32com --hidden-import=win32com.client --hidden-import=pythoncom --windowed --icon zapret.ico --name zapret main.py
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
