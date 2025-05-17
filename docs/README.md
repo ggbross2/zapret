@@ -56,7 +56,7 @@ pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main
 
 Список доменов у которого нет второго (_других_) IP и следовательно не будут работать через Zapret:
 - https://animego.org (если айпишник `185.178.208.138`, но на некоторых провайдерах этот IP пингуется!)
-- https://mail.proton.me (если айпишник `3.66.189.153`)
+- https://mail.proton.me (если айпишник `3.66.189.153`, `3.73.85.131`, `185.70.42.37`)
 - https://www.instagram.com (если айпишник `157.240.205.174`)
 - https://static.cdninstagram.com (если айпишник `157.240.205.63`)
 
