@@ -64,7 +64,7 @@ pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main
 #### Что делать?
 Вам необходимо **найти новую стратегию обхода в настройках программы и продолжить экспериментировать**, пока не подберете рабочий вариант для текущих условий вашего провайдера.
 
-Также Вы можете опробовать **Blockcheck** (для автоматического подбора стратегий): https://t.me/bypassblock/603
+Также Вы можете опробовать **[Blockcheck](https://github.com/youtubediscord/zapret/blob/main/docs/blockcheck.md)** (для автоматического подбора стратегий)
 
 <h2 align="center">Хочу узнать подробнее </h2>
 
