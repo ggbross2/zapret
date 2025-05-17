@@ -6,7 +6,7 @@ import webbrowser
 
 from config import APP_VERSION
 from urls   import INFO_URL
-from alt.about_dialog import AboutDialog
+from about_dialog import AboutDialog
 
 # ─── работа с реестром ──────────────────────────
 from reg import (
