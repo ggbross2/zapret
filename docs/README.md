@@ -16,7 +16,7 @@
 
 ## ❗ Хочу быстро и просто. Как установить и использовать? 
 ### Для новичков
-**Для неопытных пользователей рекомендуем: https://t.me/bypassblock/399**
+**Для неопытных пользователей рекомендуем: https://t.me/bypassblock/399** ([зеркало](https://github.com/youtubediscord/zapret/releases/latest/download/ZapretSetup.exe))
 
 ### Собрать Zapret самостоятельно
 1. Для опытных пользователей Вы можете скачать весь архив самостоятельно с серверов GitHub: https://github.com/youtubediscord/zapret/archive/refs/heads/main.zip
