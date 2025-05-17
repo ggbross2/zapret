@@ -29,6 +29,8 @@ pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main
 3. Чтобы включить автообновления файл updater.py должен собраться самостоятельно через команду `pyinstaller --onefile --noconsole updater.py` и загрузиться как файл `bin\updater.exe`
 
 ## О версиях
+Наш GUI лаунчер имеет несколько основных версий (каналов обновления).
+
 ### Стабильные версии
 Стабильные (релизные) сборки поставляются через лаунчер `ZapretSetup.exe`.
 
