@@ -1,4 +1,5 @@
 # single_instance.py
+
 import ctypes, atexit, sys
 
 ERROR_ALREADY_EXISTS = 183
