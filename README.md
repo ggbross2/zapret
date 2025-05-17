@@ -1,6 +1,6 @@
 <h1 align="center"><img src="https://i.imgur.com/uABXHHI.png" width="30px"></img> <a href="https://github.com/bol-van/zapret">Zapret</a> (Запрет: обход блокировки Дискорда и Ютуба) </h1>
 
-![image](https://github.com/user-attachments/assets/a8a2d500-6f6c-4393-9d22-de8602a01d4b)
+![image](https://github.com/user-attachments/assets/82784d01-a762-45e4-b081-9400fe0abb88)
 
 - Возможность обхода блокировок Ютуба и Дискорда
 - Возможность разблокировать доступ к неработающим сайтом ChatGPT, Google Gemini, Notion и другим заблокированным для России ресурсам
