@@ -1,324 +1,131 @@
-import os
-import sys
-import time
-import shutil
-import tempfile
-import subprocess
-from urllib.request import urlopen
-import json
-import threading
-import tkinter as tk
-from tkinter import ttk
-from urls import *
+# updater.py
 
-class UpdaterUI:
-    def __init__(self, title="Обновление Zapret"):
-        self.root = tk.Tk()
-        self.root.title(title)
-        self.root.geometry("400x250")
-        self.root.resizable(False, False)
-        
-        # Устанавливаем фокус на окно
-        self.root.lift()
-        self.root.attributes('-topmost', True)
-        self.root.after_idle(self.root.attributes, '-topmost', False)
-        
-        # Центрируем окно на экране
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        x = (screen_width - 400) // 2
-        y = (screen_height - 250) // 2
-        self.root.geometry(f"400x250+{x}+{y}")
-        
-        # Заголовок
-        header = tk.Label(self.root, text="Обновление программы", font=("Arial", 14, "bold"))
-        header.pack(pady=10)
-        
-        # Рамка для статуса
-        self.status_frame = tk.Frame(self.root)
-        self.status_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-        
-        # Текущее действие
-        self.status_label = tk.Label(self.status_frame, text="Инициализация...", font=("Arial", 10))
-        self.status_label.pack(anchor=tk.W, pady=5)
-        
-        # Прогресс-бар
-        self.progress = ttk.Progressbar(self.status_frame, orient="horizontal", length=360, mode="indeterminate")
-        self.progress.pack(pady=10)
-        
-        # Лог обновления (последние действия)
-        self.log_frame = tk.Frame(self.root)
-        self.log_frame.pack(fill=tk.BOTH, expand=True, padx=20)
-        
-        self.log_label = tk.Label(self.log_frame, text="Лог:", font=("Arial", 9))
-        self.log_label.pack(anchor=tk.W)
-        
-        self.log_text = tk.Text(self.log_frame, height=5, width=40, font=("Consolas", 8))
-        self.log_text.pack(fill=tk.BOTH, expand=True)
-        self.log_text.config(state=tk.DISABLED)
-        
-    def start_progress(self):
-        """Запускает анимацию прогресс-бара"""
-        self.progress.start(15)
-    
-    def stop_progress(self):
-        """Останавливает анимацию прогресс-бара"""
-        self.progress.stop()
-    
-    def set_determinate_progress(self, value=0, maximum=100):
-        """Переключает прогресс-бар в режим с определенным значением"""
-        self.progress.stop()
-        self.progress["mode"] = "determinate"
-        self.progress["maximum"] = maximum
-        self.progress["value"] = value
-    
-    def update_progress(self, value):
-        """Обновляет значение прогресс-бара"""
-        self.progress["value"] = value
-        self.root.update()
-    
-    def update_status(self, text):
-        """Обновляет текст статуса"""
-        self.status_label.config(text=text)
-        self.root.update()
-    
-    def add_log(self, text):
-        """Добавляет текст в лог"""
-        self.log_text.config(state=tk.NORMAL)
-        self.log_text.insert(tk.END, text + "\n")
-        self.log_text.see(tk.END)
-        self.log_text.config(state=tk.DISABLED)
-        self.root.update()
-    
-    def close(self):
-        """Закрывает окно"""
-        self.root.destroy()
+# -----------------------------------------------------------------
+# Проверяет https://gitflic.ru/.../version.json и, если версия новее,
+# качает ZapretSetup.exe, запускает его /VERYSILENT и закрывает программу.
+# -----------------------------------------------------------------
+import os, sys, tempfile, subprocess, shutil, time
+from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtCore    import QTimer
 
-# Глобальная переменная для UI
-ui = None
+META_URL = "https://gitflic.ru/project/main1234/main1234/blob/raw?file=version.json"          # <- ваш JSON
+TIMEOUT  = 10                                      # сек.
 
-def log(message):
-    """Выводит сообщение в консоль и записывает в лог-файл и в UI"""
-    print(message)
+def _kill_winws():
+    """
+    Безопасно пытается убить winws.exe (и дочерние),
+    чтобы установщик смог заменить файл.
+    """
     try:
-        # Записываем в лог
-        log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "updater_log.txt")
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
-    except:
+        # /T = вместе с дочерними; /F = принудительно
+        subprocess.run("taskkill /F /IM winws.exe /T",
+                       shell=True, check=False,
+                       stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
+        # даём ОС мгновение завершить процесс
+    except Exception:
         pass
+
+# ────────────────────────────────────────────────────────────────
+def _download(url: str, dest: str, on_progress=None):
+    import requests
+    r = requests.get(url, stream=True, timeout=TIMEOUT)
+    r.raise_for_status()
+    total = int(r.headers.get("content-length", 0))
+    done = 0
+    with open(dest, "wb") as fp:
+        for chunk in r.iter_content(8192):
+            fp.write(chunk)
+            if on_progress and total:
+                done += len(chunk)
+                on_progress(done, total)
+
+# ────────────────────────────────────────────────────────────────
+def check_and_run_update(parent=None, status_cb=None, **kwargs):
+    """
+    • читает META_URL;
+    • если есть новая версия, спрашивает пользователя (если not silent);
+    • скачивает Setup.exe → TEMP;
+    • запускает его /VERYSILENT и через 1.5 с закрывает Zapret.
+    """
+    silent = kwargs.get("silent", False)
     
-    # Обновляем UI, если он инициализирован
-    global ui
-    if ui:
-        ui.add_log(message)
+    # Удобный вывод статуса
+    def set_status(msg: str):
+        if status_cb: status_cb(msg)
+        elif parent and hasattr(parent, "set_status"): parent.set_status(msg)
+        else: print(msg)
 
-def download_file(url, target_path):
-    """Скачивает файл по URL"""
+    # ─ step 1.  requests / packaging ────────────────────────────
     try:
-        log(f"Скачивание файла из {url}")
-        if ui:
-            ui.update_status("Скачивание обновления...")
-            ui.start_progress()
-        
-        # Создаем временную директорию
-        temp_dir = tempfile.mkdtemp()
-        temp_file = os.path.join(temp_dir, "zapret_new.exe")
-        
-        # Скачиваем файл с отображением прогресса
-        with urlopen(url, timeout=30) as response:
-            file_size = int(response.info().get('Content-Length', -1))
-            
-            if file_size > 0 and ui:
-                ui.set_determinate_progress(0, file_size)
-                
-            block_size = 8192
-            downloaded = 0
-            
-            with open(temp_file, 'wb') as out_file:
-                while True:
-                    buffer = response.read(block_size)
-                    if not buffer:
-                        break
-                    
-                    out_file.write(buffer)
-                    downloaded += len(buffer)
-                    
-                    if file_size > 0 and ui:
-                        ui.update_progress(downloaded)
-                        percentage = (downloaded / file_size) * 100
-                        ui.update_status(f"Скачивание: {percentage:.1f}% ({downloaded} / {file_size} байт)")
-        
-        log(f"Файл скачан в {temp_file}")
-        if ui:
-            ui.update_status("Файл успешно скачан")
-            ui.stop_progress()
-            
-        return temp_file
-    except Exception as e:
-        log(f"Ошибка при скачивании файла: {str(e)}")
-        if ui:
-            ui.update_status(f"Ошибка скачивания: {str(e)}")
-            ui.stop_progress()
-        return None
+        import requests
+        from packaging import version
+    except ImportError:
+        set_status("Устанавливаю зависимости для обновления…")
+        subprocess.run([sys.executable, "-m", "pip", "-q",
+                        "install", "requests", "packaging"], check=True)
+        import requests
+        from packaging import version
 
-def update_exe_file(new_file, target_file):
-    """Заменяет целевой файл новым"""
+    # ─ step 2.  meta-файл ───────────────────────────────────────
     try:
-        if ui:
-            ui.update_status("Обновление файлов...")
-            ui.start_progress()
-            
-        # Создаем временное имя для оригинального файла
-        target_dir = os.path.dirname(target_file)
-        target_name = os.path.basename(target_file)
-        backup_file = os.path.join(target_dir, f"{target_name}.old")
-        
-        # Ждем, пока целевой файл не будет доступен для переименования
-        log("Ожидание доступа к файлу...")
-        time.sleep(3)  # Даем время на завершение процесса
-        
-        # Сначала попытаемся сразу переименовать файл, чтобы его нельзя было запустить
-        try:
-            log(f"Переименование оригинального файла в {backup_file}...")
-            os.rename(target_file, backup_file)
-            log("Файл успешно переименован.")
-        except Exception as e:
-            log(f"Не удалось переименовать файл: {str(e)}")
-            # Если не получилось переименовать, проверим доступность файла
-            if not os.path.exists(target_file):
-                log("Целевой файл не найден!")
-                if ui:
-                    ui.update_status("Ошибка: Целевой файл не найден")
-                    ui.stop_progress()
-                return False
-            
-            # Пробуем удалить файл напрямую
-            try:
-                os.remove(target_file)
-                log("Оригинальный файл удален.")
-            except Exception as e2:
-                log(f"Не удалось удалить оригинальный файл: {str(e2)}")
-                if ui:
-                    ui.update_status("Ошибка доступа к файлу")
-                    ui.stop_progress()
-                return False
-        
-        # Копируем новый файл на место оригинального
-        log(f"Копирование {new_file} на место {target_file}...")
-        if ui:
-            ui.update_status("Копирование новых файлов...")
-        shutil.copy2(new_file, target_file)
-        
-        # Проверяем успешность копирования
-        if os.path.exists(target_file):
-            log("Новый файл успешно скопирован.")
-        else:
-            log("Не удалось скопировать новый файл!")
-            # Пытаемся восстановить оригинал, если он был переименован
-            if os.path.exists(backup_file):
-                os.rename(backup_file, target_file)
-            if ui:
-                ui.update_status("Ошибка копирования файлов")
-                ui.stop_progress()
-            return False
-        
-        # Удаляем резервную копию, если она была создана
-        if os.path.exists(backup_file):
-            try:
-                os.remove(backup_file)
-                log("Резервная копия удалена.")
-            except Exception as e:
-                log(f"Не удалось удалить резервную копию: {str(e)}")
-        
-        # Удаляем временные файлы
-        log("Очистка временных файлов...")
-        if ui:
-            ui.update_status("Очистка временных файлов...")
-        try:
-            shutil.rmtree(os.path.dirname(new_file), ignore_errors=True)
-            log("Временные файлы удалены.")
-        except Exception as e:
-            log(f"Ошибка при удалении временных файлов: {str(e)}")
-        
-        # Запускаем обновленное приложение
-        log("Запуск обновленной программы...")
-        if ui:
-            ui.update_status("Запуск обновленной программы...")
-            ui.stop_progress()
-        subprocess.Popen([target_file])
-        
-        log("Обновление успешно завершено!")
-        if ui:
-            ui.update_status("Обновление успешно завершено!")
-            # Закрываем UI через 3 секунды
-            ui.root.after(3000, ui.close)
-        
-        return True
+        meta = requests.get(META_URL, timeout=TIMEOUT).json()
     except Exception as e:
-        log(f"Общая ошибка при обновлении: {str(e)}")
-        if ui:
-            ui.update_status(f"Ошибка: {str(e)}")
-            ui.stop_progress()
+        from log import log
+        log(f"Не удалось проверить обновления: {e}")
+        set_status("Не удалось проверить обновления.")
         return False
 
-def main():
-    global ui
-    
-    try:
-        # Инициализируем UI
-        ui = UpdaterUI("Обновление Zapret")
-        
-        # Запускаем UI в отдельном потоке
-        ui_thread = threading.Thread(target=ui.root.mainloop)
-        ui_thread.daemon = True
-        ui_thread.start()
-        
-        # Проверяем аргументы командной строки
-        if len(sys.argv) < 2:
-            log("Использование: updater.exe <путь_к_обновляемому_файлу> [новая_версия]")
-            ui.update_status("Ошибка: Недостаточно аргументов")
-            input("Нажмите Enter для выхода...")
-            return 1
-        
-        # Получаем путь к обновляемому файлу
-        target_file = sys.argv[1]
-        log(f"Путь к обновляемому файлу: {target_file}")
-        ui.update_status("Инициализация обновления...")
-        
-        # URL для скачивания обновления
-        download_url = EXE_UPDATE_URL
-        
-        # Скачиваем новую версию
-        new_file = download_file(download_url, target_file)
-        if not new_file:
-            log("Не удалось скачать обновление.")
-            ui.update_status("Ошибка скачивания обновления")
-            input("Нажмите Enter для выхода...")
-            return 1
-        
-        # Обновляем файл
-        if update_exe_file(new_file, target_file):
-            # Ждем, пока UI закроется
-            ui_thread.join(5)
-            return 0
-        else:
-            ui.update_status("Обновление не удалось")
-            input("Нажмите Enter для выхода...")
-            return 1
-            
-    except Exception as e:
-        log(f"Необработанная ошибка: {str(e)}")
-        if ui:
-            ui.update_status(f"Критическая ошибка: {str(e)}")
-            ui.stop_progress()
-        input("Нажмите Enter для выхода...")
-        return 1
+    new_ver   = meta.get("version")
+    upd_url   = meta.get("update_url")
+    notes     = meta.get("release_notes", "")
 
-if __name__ == "__main__":
+    if not new_ver or not upd_url:
+        set_status("version.json неполон (нет version/update_url).")
+        return False
+
+    from config.config import APP_VERSION
+    if version.parse(new_ver) <= version.parse(APP_VERSION):
+        if not silent:
+            QMessageBox.information(parent, "Обновление",
+                                     f"У вас установлена последняя версия {APP_VERSION}.")
+        return False
+
+    # ─ step 3.  спрашиваем пользователя ────────────────────────
+    if not silent:
+        txt = (f"Доступна новая версия {new_ver} (у вас {APP_VERSION}).\n\n"
+               f"{notes}\n\nУстановить сейчас?")
+        if QMessageBox.question(parent, "Доступно обновление",
+                                txt, QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return False
+
+    # ─ step 4.  скачиваем Setup.exe ─────────────────────────────
+    tmp_dir   = tempfile.mkdtemp(prefix="zapret_upd_")
+    setup_exe = os.path.join(tmp_dir, "ZapretSetup.exe")
+
+    def _prog(done, total): set_status(f"Скачивание… {done*100//total}%")
     try:
-        sys.exit(main())
+        _download(upd_url, setup_exe, _prog if parent else None)
     except Exception as e:
-        print(f"Критическая ошибка: {str(e)}")
-        input("Нажмите Enter для выхода...")
-        sys.exit(1)
+        set_status(f"Ошибка загрузки: {e}")
+        shutil.rmtree(tmp_dir, True)
+        return False
+
+    # ─ step 5.  запуск установщика ─────────────────────────────
+    try:
+        from dpi.stop import stop_dpi
+        stop_dpi(parent)  # останавливаем winws.exe
+        time.sleep(0.5)       # даём время завершиться
+        _kill_winws()          # убиваем winws.exe (если не остановился)
+        time.sleep(2)
+        subprocess.Popen(['cmd', '/c', 'start', '', setup_exe, '/NORESTART'])
+        QTimer.singleShot(10, lambda: os._exit(0))
+    
+    except Exception as e:
+        set_status(f"Не удалось запустить установщик: {e}")
+        shutil.rmtree(tmp_dir, True)
+        return False
+
+    set_status("Запущен установщик обновления…")
+    QTimer.singleShot(1500, lambda: sys.exit(0))   # освободить exe-файл
+    return True
