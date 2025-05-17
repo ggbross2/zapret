@@ -1078,7 +1078,7 @@ def main():
         )
         sys.exit(0)
 
-    from remove_terminal import remove_windows_terminal_if_win11
+    from startup.remove_terminal import remove_windows_terminal_if_win11
     remove_windows_terminal_if_win11()
     
     # ---------------- основное окно ----------------------------------
