@@ -82,7 +82,10 @@ pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main
 
 Окно выше окно рассылает **SaveFrom** или **Юбуст**, которое может **мешать** работе Zapret. Отключайте расширения в браузерах перед тем как тестировать Zapret!
 
-### О Яндекс Браузере
+### О Яндекс Браузере и Яндекс ДНС
+> [!CAUTION]  
+> [Яндекс DNS](https://t.me/bypassblock/134) перестали открывать Discord и другие заблокированные сайты. Не пользуйтесь ими. Рекомендуем сменить их на [**Google DNS**](https://developers.google.com/speed/public-dns) или [**Quad9 DNS**](https://quad9.net/service/service-addresses-and-features).
+
 Мы настоятельно **НЕ** рекомендуем использовать Яндекс Браузер! Он может нарушать работу Zapret. Например:
 - Подменять днс (меняется в настройках)
 - Просто блокировать ютуб через свои механизмы
@@ -95,9 +98,6 @@ pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main
 
 > [!CAUTION]  
 > [Касперский](https://github.com/bol-van/zapret/issues/611) и иные российские вирусы начали войну с запретами и иными средствами обхода блокировок. Чтобы использовать их спокойно рекомендуется перейти на **альтернативные** антивирусы (Defender, ESET32 и т.д.), которые не выдают ложные и обманчивые срабатывания и помогают от большего количества угроз. Также не следует использовать российские антивирусы, либо добавлять файлы в исключения.
-
-> [!CAUTION]  
-> [Яндекс DNS](https://t.me/bypassblock/134) перестали открывать Discord и другие заблокированные сайты. Не пользуйтесь ими. Рекомендуем сменить их на [**Google DNS**](https://developers.google.com/speed/public-dns) или [**Quad9 DNS**](https://quad9.net/service/service-addresses-and-features).
 
 ### Другие полезные сервисы и VPN https://github.com/awesome-windows11/CensorNet
 
