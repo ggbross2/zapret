@@ -86,6 +86,8 @@ pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main
 > [!CAUTION]  
 > [Яндекс DNS](https://t.me/bypassblock/134) перестали открывать Discord и другие заблокированные сайты. Не пользуйтесь ими. Рекомендуем сменить их на [**Google DNS**](https://developers.google.com/speed/public-dns) или [**Quad9 DNS**](https://quad9.net/service/service-addresses-and-features).
 
+![image](https://github.com/user-attachments/assets/e8a11aa1-446c-40f4-b7d4-fc35b26ba9af)
+
 Мы настоятельно **НЕ** рекомендуем использовать Яндекс Браузер! Он может нарушать работу Zapret. Например:
 - Подменять днс (меняется в настройках)
 - Просто блокировать ютуб через свои механизмы
