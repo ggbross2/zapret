@@ -58,6 +58,7 @@ pyinstaller --noconfirm --onefile --windowed --icon "%cd%\zapret.ico" "%cd%\main
 - https://animego.org (если айпишник `185.178.208.138`, но на некоторых провайдерах этот IP пингуется!)
 - https://mail.proton.me (если айпишник `3.66.189.153`)
 - https://www.instagram.com (если айпишник `157.240.205.174`)
+- https://static.cdninstagram.com (если айпишник `157.240.205.63`)
 
 ### У меня сломался Zapret после ваших обновлений
 Ваша стратегия обхода перестала работать? Вероятно, дело в обновлении DPI у вашего провайдера.
