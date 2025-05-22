@@ -115,7 +115,7 @@ SkyWinFo - инженер ВПН который пошёл по скользко
 
 ![image](https://github.com/user-attachments/assets/39a68687-a671-4ac4-a0fd-e47a4166e7ff)
 
-На VirusTotal [СВЫШЕ 55 срабатываний](https://www.virustotal.com/gui/file/26b585599d0a8583af6e6aab0736b08cf81116a7d3ad9e0a826841663a099735)!
+На VirusTotal [СВЫШЕ 55 срабатываний](https://www.virustotal.com/gui/file/26b585599d0a8583af6e6aab0736b08cf81116a7d3ad9e0a826841663a099735)! [Новая](https://www.virustotal.com/gui/file/26b585599d0a8583af6e6aab0736b08cf81116a7d3ad9e0a826841663a099735/community) версия
 
 🚩 Красные флаги:
 *   Не имеет исходного кода на GitHub
