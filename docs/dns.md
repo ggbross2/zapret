@@ -22,3 +22,20 @@ xbox-dns.ru
 
 ### Comss DNS
 https://www.comss.ru/page.php?id=7315
+
+DNS-over-HTTPS (DoH) – Windows, Браузеры
+```
+https://dns.comss.one/dns-query
+```
+DNS-over-HTTPS (DoH) – iPhone, iPad, Mac
+```
+dns.comss.one.mobileconfig
+```
+DNS-over-TLS (DoT) – Android, Linux
+
+`dns.comss.one` или `tls://dns.comss.one`
+
+DNS-over-QUIC (DoQ)
+```
+quic://dns.comss.one
+```
