@@ -95,6 +95,10 @@ SkyWinFo - инженер ВПН который пошёл по скользко
 
 ![image](https://github.com/user-attachments/assets/a7368c38-da6f-4ccc-9d57-60692c42f88d)
 
+Новый пост с вирусом:
+
+![image](https://github.com/user-attachments/assets/2ac64cce-88ac-4035-b92e-ccc02b45e7b4)
+
 Их ютуб канал:
 
 ![image](https://github.com/user-attachments/assets/dbf303d6-bba1-45a8-a251-2aa6bf2aef1b)
