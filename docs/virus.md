@@ -107,9 +107,13 @@ SkyWinFo - инженер ВПН который пошёл по скользко
 
 ![image](https://github.com/user-attachments/assets/fbd01f1c-6449-40fb-9e06-1954453cdd70)
 
+![image](https://github.com/user-attachments/assets/d5085a43-93a6-4b86-bb7c-2925957ee09a)
+
 Батник general.bat запускает два exe файла, что опять же не нужно.
 
 ![image](https://github.com/user-attachments/assets/848b428a-b808-4f3b-995a-66c584f09d86)
+
+![image](https://github.com/user-attachments/assets/39a68687-a671-4ac4-a0fd-e47a4166e7ff)
 
 На VirusTotal [СВЫШЕ 55 срабатываний](https://www.virustotal.com/gui/file/26b585599d0a8583af6e6aab0736b08cf81116a7d3ad9e0a826841663a099735)!
 
