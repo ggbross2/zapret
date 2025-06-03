@@ -105,6 +105,7 @@ https://github.com/youtubediscord/zapret/blob/main/docs/build.md
 <h2 align="center">Хочу узнать подробнее </h2>
 
 ### [🛡 Что такое Zapret](https://teletype.in/@censorliber/zapretvpndpi)
+### [Как работает Запрет](https://github.com/youtubediscord/zapret/blob/main/docs/flags.md)
 ### [👾 О вирусах](https://teletype.in/@censorliber/zapretvirus)
 
 > [!CAUTION]  
