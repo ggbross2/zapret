@@ -64,6 +64,10 @@ https://github.com/youtubediscord/zapret/blob/main/docs/build.md
 - https://www.instagram.com (если айпишник `157.240.205.174`)
 - https://static.cdninstagram.com (если айпишник `157.240.205.63`)
 
+Также проверьте что у вас выключен **ЛЮБОЙ VPN и прокси-сервер в Windows** - он также может ломать весь Запрет.
+
+![image](https://github.com/user-attachments/assets/94b0c35a-7899-4545-8d4b-8293560e0761)
+
 ### У меня сломался Zapret после ваших обновлений
 Ваша стратегия обхода перестала работать? Вероятно, дело в обновлении DPI у вашего провайдера.
 
