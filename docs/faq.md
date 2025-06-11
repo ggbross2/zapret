@@ -35,6 +35,9 @@
 - Антизапрет
 - Adguard
 
+## Discord
+Включённый AdGuard блокирует соединение со звуком у Discord при работе Zapret.
+
 ## О Яндекс Браузере и Яндекс ДНС
 > [!CAUTION]  
 > [Яндекс DNS](https://t.me/bypassblock/134) перестали открывать Discord и другие заблокированные сайты. Не пользуйтесь ими. Рекомендуем сменить их на [**Google DNS**](https://developers.google.com/speed/public-dns) или [**Quad9 DNS**](https://quad9.net/service/service-addresses-and-features).
