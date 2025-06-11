@@ -47,6 +47,8 @@ https://github.com/youtubediscord/zapret/blob/main/docs/build.md
 ### Консольные версии (без GUI, Win7)
 Подробнее тут: https://github.com/youtubediscord/zapret/releases/tag/win7
 
+<h2 align="center">Хочу узнать подробнее </h2>
+
 ### [❓ FAQ](https://github.com/youtubediscord/zapret/blob/main/docs/faq.md)
 ### [🛡 Что такое Zapret](https://teletype.in/@censorliber/zapretvpndpi)
 ### [Как работает Запрет](https://github.com/youtubediscord/zapret/blob/main/docs/flags.md)
