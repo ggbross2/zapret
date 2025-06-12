@@ -340,7 +340,17 @@
             "expires": "2025-07-13T23:59:59Z",
             "signature": "755947ed4ed780d6545e8d2ec8f476ce4be042cd0470136e75db62cb1e714186",
             "plan": "premium",
-            "notes": "cnezok, scp 49"
+            "notes": "cnezok, @glebsprehen"
+        },
+        {
+            "uuid": "3605e86a-8313-565f-8e14-648991c064bf",
+            "id": "27",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-07-13T23:59:59Z",
+            "signature": "5203dc956821efd62d369e675acb17d9c8342a9691e03dcd1a53c8d33bb33da1",
+            "plan": "premium",
+            "notes": "Jay"
         }
     ],
     "server_info": {
