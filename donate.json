@@ -261,6 +261,16 @@
             "signature": "bf88d0258e1337e97e193eb27df387f022695eb66a1d51de35c5ece00d31a874",
             "plan": "premium",
             "notes": "Лёха Паскудник"
+        },
+        {
+            "uuid": "7439532c-8b1e-525e-8e8e-7ddc612dc933",
+            "id": "25",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-07-13T23:59:59Z",
+            "signature": "b9d2f2e13427b702502183a04876d3eaa62f66ed2c69eceb124772205d4fab52",
+            "plan": "premium",
+            "notes": "Povelitel Phadoma"
         }
     ],
     "server_info": {
