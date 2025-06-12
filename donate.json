@@ -70,7 +70,7 @@
             "expires": "2025-07-13T23:59:59Z",
             "signature": "e64c40a9f44633da4f08ead8a404845855adaaa9d5de0461b1b6fe8d2694a133",
             "plan": "premium",
-            "notes": "GitHub Copilot test user"
+            "notes": "Vanhaunt"
         },
         {
             "uuid": "cf4dfee9-dff6-523f-9e46-fa1ffb2efad4",
@@ -87,20 +87,20 @@
             "id": "8",
             "salt": "premium_salt_2025_zapret",
             "premium": true,
-            "expires": "2025-07-13T23:59:59Z",
+            "expires": "2026-06-13T23:59:59Z",
             "signature": "e606fc07d5390915787bba75fb859bef105e4397f7c79bf6c70b137958c5cc37",
             "plan": "premium",
-            "notes": "GitHub Copilot test user"
+            "noёtes": "Knortx"
         },
         {
             "uuid": "5958f9fc-174c-54ce-afb6-ec5966b6190c",
             "id": "9",
             "salt": "premium_salt_2025_zapret",
             "premium": true,
-            "expires": "2025-07-13T23:59:59Z",
+            "expires": "2026-06-13T23:59:59Z",
             "signature": "12fb46e707ee337e926ea1f57d2fb15d1c270e6709b42c39cce018536a175713",
             "plan": "premium",
-            "notes": "GitHub Copilot test user"
+            "notes": "/// | @oneshard"
         },
         {
             "uuid": "6ee65db2-5810-5a90-ab61-fb96e29378aa",
@@ -120,7 +120,7 @@
             "expires": "2025-07-13T23:59:59Z",
             "signature": "e7c0fee55bb0b6f26d576b2dd73bbf1d6efd9830dfdb081f7a3cfd50f73871b7",
             "plan": "premium",
-            "notes": "GitHub Copilot test user"
+            "notes": "Flatron 1337 | Bonfire"
         },
         {
             "uuid": "fe0033b6-8d16-566e-a3a8-f34d07faff43",
@@ -130,7 +130,7 @@
             "expires": "2025-07-13T23:59:59Z",
             "signature": "df68af7db7ac8d3b9d27383072677aff5ef2aa0531b63b411febef33ca9c5f92",
             "plan": "premium",
-            "notes": "GitHub Copilot test user"
+            "notes": "GForesT"
         },
         {
             "uuid": "b56edd9d-7593-57e4-b077-39858cfd2fc2",
@@ -147,10 +147,10 @@
             "id": "14",
             "salt": "premium_salt_2025_zapret",
             "premium": true,
-            "expires": "2025-07-13T23:59:59Z",
+            "expires": "2025-09-13T23:59:59Z",
             "signature": "79ca4d5d87fcab1a95162c0de3971d700aaa1b8c4bc803642553b281091088c4",
             "plan": "premium",
-            "notes": "GitHub Copilot test user"
+            "notes": "Outside | quisked"
         },
         {
             "uuid": "131a276d-b777-5173-93cf-50fa7d9a4ba9",
@@ -210,7 +210,7 @@
             "expires": "2025-07-13T23:59:59Z",
             "signature": "6413df90247609d6f3dc1ba7b443cf5e2a5a6eeef6f5cea7ff74bb3a99002f60",
             "plan": "premium",
-            "notes": "Corisabi"
+            "notes": ""
         },
         {
             "uuid": "06b65374-3d45-5383-af20-7d5d30efeee8",
@@ -220,7 +220,17 @@
             "expires": "2025-07-13T23:59:59Z",
             "signature": "13d0bac73f9b234990d046390084bc356076d99fe51fcfab225f10df7051cca5",
             "plan": "premium",
-            "notes": "Corisabi"
+            "notes": "Егор Дюжков"
+        },
+        {
+            "uuid": "fcedfac7-823c-5e52-aa11-8c0d4ad756be",
+            "id": "21",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-07-13T23:59:59Z",
+            "signature": "0c0b39ce865d876a10bed5f311a5e9dfc3cd4ec2c3e3c4c559cc33a40054d69d",
+            "plan": "premium",
+            "notes": "qwrdjzdx"
         }
     ],
     "server_info": {
