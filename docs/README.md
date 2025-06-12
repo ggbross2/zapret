@@ -1,6 +1,6 @@
 <h1 align="center"><img src="https://i.imgur.com/uABXHHI.png" width="30px"></img> <a href="https://github.com/bol-van/zapret">Zapret</a> (Запрет: обход блокировки Дискорда и Ютуба) </h1>
 
-![image](https://github.com/user-attachments/assets/60ca6d7e-9e24-4829-80e7-2ddc570560a3)
+![image](https://github.com/user-attachments/assets/05775d10-996c-4edb-a128-839df0f0571d)
 
 - Возможность обхода блокировок Ютуба и Дискорда (через ядро `winws.exe`)
 - Возможность разблокировать доступ к неработающим сайтом ChatGPT, Google Gemini, Notion и другим заблокированным для России ресурсам (через файл `hosts`)
