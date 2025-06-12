@@ -291,6 +291,16 @@
             "signature": "7951bb3262d3813feeafbf5395bd66436d50c6ed63f2814bf066384baff2c7a7",
             "plan": "premium",
             "notes": "4thUnknown"
+        },
+        {
+            "uuid": "a7c2f998-b80c-53f4-9e57-614b68292302",
+            "id": "27",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-12-13T23:59:59Z",
+            "signature": "4a8ae3b77544d30c61ddfc7b7f900c6f357a53abf0c465404292f45cc8b733c7",
+            "plan": "premium",
+            "notes": "magni"
         }
     ],
     "server_info": {
