@@ -72,6 +72,7 @@ https://github.com/youtubediscord/zapret/blob/main/docs/build.md
 
 > [!TIP]  
 > Если совсем отчаетесь то можете написать в [ЛС **БЕСПЛАТНЫЙ** запрос на удалённую настройку](https://t.me/youtubenotwork/4764) через AnyDesk. В любой момент подключение можно завершить и удалить программу.
+> Поддержать разработчиков https://boosty.to/censorliber
 
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=youtubediscord/zapret&type=Date&theme=dark" />
