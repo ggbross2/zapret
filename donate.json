@@ -310,17 +310,27 @@
             "expires": "2025-07-13T23:59:59Z",
             "signature": "4c246fad63cf3580a64c960ceb39f0c0ee7ab1a4acd47e2920da56d1336ba04c",
             "plan": "premium",
-            "notes": "magni"
+            "notes": "Олег Поликарпов | CongenitalDisorder"
         },
         {
-            "uuid": "b8d6d910-47fa-5f5c-82ae-7968c0d6935d",
+            "uuid": "ac0ccae0-bbe3-559a-ab43-c5bb049845fa",
             "id": "27",
             "salt": "premium_salt_2025_zapret",
             "premium": true,
             "expires": "2025-12-13T23:59:59Z",
-            "signature": "4141f37ed9cabdbd2238230494cdce2db138bbc07c475ecf16fc2b1a67f2562a",
+            "signature": "91110a9a9130b878964297009b875bca758b34fe7bb09363acd0aa2b425c536e",
             "plan": "premium",
-            "notes": "magni"
+            "notes": "///"
+        },
+        {
+            "uuid": "90e1f76d-af7d-585e-90e0-7f75883a6220",
+            "id": "27",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-07-13T23:59:59Z",
+            "signature": "755947ed4ed780d6545e8d2ec8f476ce4be042cd0470136e75db62cb1e714186",
+            "plan": "premium",
+            "notes": "scp 49"
         }
     ],
     "server_info": {
