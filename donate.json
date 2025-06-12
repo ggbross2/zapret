@@ -301,6 +301,26 @@
             "signature": "4a8ae3b77544d30c61ddfc7b7f900c6f357a53abf0c465404292f45cc8b733c7",
             "plan": "premium",
             "notes": "magni"
+        },
+        {
+            "uuid": "d10fcee4-e1c5-50d2-b1c4-e9e8c97febd8",
+            "id": "27",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-07-13T23:59:59Z",
+            "signature": "4c246fad63cf3580a64c960ceb39f0c0ee7ab1a4acd47e2920da56d1336ba04c",
+            "plan": "premium",
+            "notes": "magni"
+        },
+        {
+            "uuid": "b8d6d910-47fa-5f5c-82ae-7968c0d6935d",
+            "id": "27",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-12-13T23:59:59Z",
+            "signature": "4141f37ed9cabdbd2238230494cdce2db138bbc07c475ecf16fc2b1a67f2562a",
+            "plan": "premium",
+            "notes": "magni"
         }
     ],
     "server_info": {
