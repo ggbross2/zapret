@@ -160,7 +160,7 @@
             "expires": "2025-07-13T23:59:59Z",
             "signature": "6b060dea1409a8815b39e43d5422537bc52e803ad55a5d379cae51ede16c4542",
             "plan": "premium",
-            "notes": "GitHub Copilot test user"
+            "notes": "HyperNova (littlecrownk)"
         },
         {
             "uuid": "d922cd82-f1ed-5cc9-8690-750eb5db9d0d",
@@ -224,13 +224,43 @@
         },
         {
             "uuid": "fcedfac7-823c-5e52-aa11-8c0d4ad756be",
-            "id": "21",
+            "id": "22",
             "salt": "premium_salt_2025_zapret",
             "premium": true,
             "expires": "2025-07-13T23:59:59Z",
             "signature": "0c0b39ce865d876a10bed5f311a5e9dfc3cd4ec2c3e3c4c559cc33a40054d69d",
             "plan": "premium",
             "notes": "qwrdjzdx"
+        },
+        {
+            "uuid": "cc810311-fcb1-5055-aa7a-3b9836eff22d",
+            "id": "23",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-09-13T23:59:59Z",
+            "signature": "0c7f357dd61f0e338ece511b34999287733651cc09d40bf2d9bf301fe66a0ebf",
+            "plan": "premium",
+            "notes": "ruslan norton"
+        },
+        {
+            "uuid": "e665a655-1757-5c9c-be48-238ea217ba74",
+            "id": "24",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2026-06-13T23:59:59Z",
+            "signature": "5ac539fd6cd17ee8cee206d13e00c93aa4c88e4fe64b205e25cb7417dc13a630",
+            "plan": "premium",
+            "notes": "STALKER | TOGETHER"
+        },
+        {
+            "uuid": "ed76a580-167c-5e88-9a2d-3eec386c98b6",
+            "id": "25",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-07-13T23:59:59Z",
+            "signature": "bf88d0258e1337e97e193eb27df387f022695eb66a1d51de35c5ece00d31a874",
+            "plan": "premium",
+            "notes": "Лёха Паскудник"
         }
     ],
     "server_info": {
