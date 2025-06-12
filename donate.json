@@ -323,6 +323,16 @@
             "notes": "///"
         },
         {
+            "uuid": "b8d6d910-47fa-5f5c-82ae-7968c0d6935d",
+            "id": "27",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-12-13T23:59:59Z",
+            "signature": "4141f37ed9cabdbd2238230494cdce2db138bbc07c475ecf16fc2b1a67f2562a",
+            "plan": "premium",
+            "notes": "scp 49"
+        },
+        {
             "uuid": "90e1f76d-af7d-585e-90e0-7f75883a6220",
             "id": "27",
             "salt": "premium_salt_2025_zapret",
@@ -330,7 +340,7 @@
             "expires": "2025-07-13T23:59:59Z",
             "signature": "755947ed4ed780d6545e8d2ec8f476ce4be042cd0470136e75db62cb1e714186",
             "plan": "premium",
-            "notes": "scp 49"
+            "notes": "cnezok, scp 49"
         }
     ],
     "server_info": {
