@@ -278,9 +278,19 @@
             "salt": "premium_salt_2025_zapret",
             "premium": true,
             "expires": "2025-09-13T23:59:59Z",
-            "signature": "b9d2f2e13427b702502183a04876d3eaa62f66ed2c69eceb124772205d4fab52",
+            "signature": "1bda69a27de5185af2f5c55a13f20f13e7d82dff0dd789bb0768d5a03a1875f5",
             "plan": "premium",
             "notes": "ruslan norton"
+        },
+        {
+            "uuid": "8bbb9934-fb3a-5501-8442-a1e527a34ee0",
+            "id": "27",
+            "salt": "premium_salt_2025_zapret",
+            "premium": true,
+            "expires": "2025-07-13T23:59:59Z",
+            "signature": "7951bb3262d3813feeafbf5395bd66436d50c6ed63f2814bf066384baff2c7a7",
+            "plan": "premium",
+            "notes": "4thUnknown"
         }
     ],
     "server_info": {
