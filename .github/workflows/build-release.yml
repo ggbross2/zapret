@@ -1,0 +1,65 @@
+name: Build and Release Zapret
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Release channel'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+          - stable
+          - test
+      version:
+        description: 'Version number (leave empty for auto-increment)'
+        required: false
+        default: ''
+      release_notes:
+        description: 'Release notes'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Python dependencies
+      run: |
+        pip install PyInstaller psutil requests
+
+    - name: Install Inno Setup
+      run: |
+        choco install innosetup -y --version=6.2.2
+
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      shell: bash
+
+    - name: Build Release
+      env:
+        CHANNEL: ${{ github.event.inputs.channel }}
+        VERSION: ${{ github.event.inputs.version }}
+        RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+      run: |
+        python build_tools/build_release_ci.py
+      shell: pwsh
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: installer-${{ github.event.inputs.channel }}
+        path: ZapretSetup*.exe
