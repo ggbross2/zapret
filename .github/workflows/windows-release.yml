@@ -3,44 +3,43 @@ name: Build zapret.exe on push to main
 
 on:
   push:
-    branches:
-      - main           # ← собираем только эту ветку
+    branches: [ main ]   # собираем только main
 
 jobs:
   build-win:
     runs-on: windows-2022
     env:
-      CI: "true"       # флаг для build.bat, чтобы отключить pause и UAC
+      CI: "true"         # чтобы build.bat не спрашивал UAC/pause
 
     steps:
-      # 1. Получаем исходники
-      - name: Checkout sources
+      # 1. Клонируем исходники
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Настраиваем Python (x64)
-      - name: Set up Python
+      # 2. Ставим Python 3.12 ×64
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           architecture: "x64"
 
-      # 3. Ставим PyInstaller + pywin32
-      - name: Install build dependencies
+      # 3. Ставим все зависимости из requirements.txt
+      - name: Install dependencies
         shell: cmd
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller pywin32
+          python -m pip install -r requirements.txt
 
-      # 4. Запускаем ваш бат-файл
-      - name: Build EXE (build.bat)
+      # 4. Сборка exe через ваш бат-скрипт
+      - name: Build EXE
         shell: cmd
         run: |
           call build.bat --ci
 
-      # 5. Загружаем полученный zapret.exe как артефакт
+      # 5. Публикуем zapret.exe как артефакт
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zapret-${{ github.sha }}   # имя можно изменить
-          path: zapret/zapret.exe          # путь до итогового файла
-          retention-days: 30               # хранить 30 дней (по умолчанию 90)
+          name: zapret-${{ github.sha }}   # <имя_артефакта>
+          path: zapret/zapret.exe          # путь к файлу
+          retention-days: 30               # хранить 30 дней
