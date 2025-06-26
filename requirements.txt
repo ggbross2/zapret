@@ -1,0 +1,11 @@
+# ─── базовые зависимости приложения ───
+PyQt6
+packaging
+requests
+python-telegram-bot
+psutil
+qt_material
+
+# ─── только для сборки ───
+pyinstaller
+pywin32
