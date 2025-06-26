@@ -5,6 +5,7 @@ requests
 python-telegram-bot
 psutil
 qt_material
+qtawesome
 
 # ─── только для сборки ───
 pyinstaller
