@@ -43,5 +43,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zapret-${{ github.sha }}   # <имя_артефакта>
-          path: zapret/zapret.exe          # путь к файлу
+          path: '**/zapret.exe'         # путь к файлу
           retention-days: 30               # хранить 30 дней
