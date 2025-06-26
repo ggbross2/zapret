@@ -6,13 +6,13 @@ from log import log
 from typing import Callable, Optional
 
 
-def _resolve_bin_folder(bin_folder: str) -> Path:
-    """Возвращает абсолютный путь к bin, учитывая PyInstaller one-file."""
-    p = Path(bin_folder)
+def _resolve_bat_folder(bat_folder: str) -> Path:
+    """Возвращает абсолютный путь к bat, учитывая PyInstaller one-file."""
+    p = Path(bat_folder)
     if p.is_absolute():
         return p
 
-    # 1) <cwd>\bin
+    # 1) <cwd>\bat
     cwd_variant = (Path.cwd() / p).resolve()
     if cwd_variant.exists():
         return cwd_variant
@@ -25,10 +25,9 @@ def _resolve_bin_folder(bin_folder: str) -> Path:
 
     return p.resolve()
 
-
 def setup_autostart_for_strategy(
     selected_mode: str,
-    bin_folder: str,
+    bat_folder: str,
     index_path: str | None = None,
     ui_error_cb: Optional[Callable[[str], None]] = None,
 ) -> bool:
@@ -37,8 +36,8 @@ def setup_autostart_for_strategy(
 
     Args:
         selected_mode: отображаемое имя стратегии (поле "name" в index.json)
-        bin_folder:    каталог с *.bat* и index.json
-        index_path:    путь к index.json (по­умолчанию <bin_folder>/index.json)
+        bat_folder:    каталог с *.bat* и index.json
+        index_path:    путь к index.json
 
     Returns:
         True  – ярлык создан;
@@ -46,14 +45,14 @@ def setup_autostart_for_strategy(
     """
     try:
         # ----------- ищем BAT ------------------------------------------------
-        bin_dir = _resolve_bin_folder(bin_folder)
+        bat_dir = _resolve_bat_folder(bat_folder)
 
-        idx_path = Path(index_path) if index_path else bin_dir / "index.json"
+        idx_path = Path(index_path) if index_path else bat_dir / "index.json"
         if not idx_path.is_file():
-            log(f"index.json не найден: {idx_path}", "ERROR")
+            log(f"index.json не найден: {idx_path}", "❌ ERROR")
             return False
 
-        with idx_path.open(encoding="utf-8") as f:
+        with idx_path.open(encoding="utf-8-sig") as f:
             data: dict = json.load(f)
 
         entry_key, entry_val = next(
@@ -62,7 +61,7 @@ def setup_autostart_for_strategy(
             (None, None)
         )
         if not entry_key:
-            log(f"Стратегия «{selected_mode}» не найдена", "ERROR")
+            log(f"Стратегия «{selected_mode}» не найдена", "❌ ERROR")
             return False
 
         # берём file_path, если указан
@@ -72,9 +71,9 @@ def setup_autostart_for_strategy(
             bat_name = entry_key if entry_key.lower().endswith(".bat") \
                                  else f"{entry_key}.bat"
 
-        bat_path = (bin_dir / bat_name).resolve()
+        bat_path = (bat_dir / bat_name).resolve()
         if not bat_path.is_file():
-            log(f".bat отсутствует: {bat_path}", "ERROR")
+            log(f".bat отсутствует: {bat_path}", "❌ ERROR")
             return False
 
         # ----------- создаём/обновляем задачу Планировщика -------------------
@@ -86,7 +85,7 @@ def setup_autostart_for_strategy(
         return ok
 
     except Exception as exc:
-        log(f"setup_autostart_for_strategy: {exc}", "ERROR")
+        log(f"setup_autostart_for_strategy: {exc}", "❌ ERROR")
         return False
 
 def _create_task_scheduler_job(
@@ -112,10 +111,12 @@ def _create_task_scheduler_job(
     cmd = [
         "schtasks", "/Create",
         "/TN", task_name,
-        "/TR", tr_cmd,
-        "/SC", "ONSTART",
+        "/TR", f'"{bat_path}"',
+        "/SC", "ONLOGON",        # Изменено: при входе в систему вместо при запуске
         "/RU", "SYSTEM",
-        "/F"               # перезаписать, если задача уже существует
+        "/RL", "HIGHEST",        # Запуск с повышенными правами
+        "/IT",                   # Интерактивное выполнение (важно для ONLOGON)
+        "/F"                     # перезаписать, если задача уже существует
     ]
 
     try:
@@ -123,7 +124,7 @@ def _create_task_scheduler_job(
             cmd,
             capture_output=True,
             text=True,
-            encoding="utf-8"
+            encoding="cp1251"  # Changed from "utf-8" to "cp1251"
         )
         if res.returncode == 0:
             log(f'Задача "{task_name}" создана/обновлена', "INFO")
@@ -132,7 +133,7 @@ def _create_task_scheduler_job(
         # Ошибка — готовим информативное сообщение
         err_msg = (f'Не удалось создать задачу автозапуска "{task_name}". '
                    f'Код {res.returncode}.\n{res.stderr.strip()}')
-        log(err_msg, "ERROR")
+        log(err_msg, "❌ ERROR")
         if ui_error_cb:
             ui_error_cb(err_msg)
         return False
@@ -140,13 +141,39 @@ def _create_task_scheduler_job(
     except FileNotFoundError:
         # schtasks отсутствует (теоретически возможно в WinPE)
         err_msg = "Команда schtasks не найдена – автозапуск невозможен"
-        log(err_msg, "ERROR")
+        log(err_msg, "❌ ERROR")
         if ui_error_cb:
             ui_error_cb(err_msg)
         return False
+    except UnicodeDecodeError:
+        # Fallback: try with errors='ignore' if cp1251 fails
+        try:
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="cp1251",
+                errors="ignore"
+            )
+            if res.returncode == 0:
+                log(f'Задача "{task_name}" создана/обновлена (триггер: при входе в систему)', "INFO")
+                return True
+            else:
+                err_msg = (f'Не удалось создать задачу автозапуска "{task_name}". '
+                          f'Код {res.returncode}.\n{res.stderr.strip()}')
+                log(err_msg, "❌ ERROR")
+                if ui_error_cb:
+                    ui_error_cb(err_msg)
+                return False
+        except Exception as fallback_exc:
+            err_msg = f"Ошибка кодировки при создании задачи: {fallback_exc}"
+            log(err_msg, "❌ ERROR")
+            if ui_error_cb:
+                ui_error_cb("Ошибка кодировки; подробности в логе.")
+            return False
     except Exception as exc:
         err_msg = f"_create_task_scheduler_job: {exc}\n{traceback.format_exc()}"
-        log(err_msg, "ERROR")
+        log(err_msg, "❌ ERROR")
         if ui_error_cb:
             ui_error_cb("Ошибка создания задачи автозапуска; подробности в логе.")
         return False
