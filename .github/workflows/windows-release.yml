@@ -9,7 +9,9 @@ jobs:
   build-win:
     runs-on: windows-2022
     env:
-      CI: "true"         # чтобы build.bat не спрашивал UAC/pause
+      CI: "true" # чтобы build.bat не спрашивал UAC/pause
+      PYTHONUTF8: "1"          # ← новая строка
+      PYTHONIOENCODING: "utf-8"
 
     steps:
       # 1. Клонируем исходники
