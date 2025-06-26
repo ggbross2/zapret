@@ -1,4 +1,3 @@
-# .github/workflows/windows-release.yml
 name: Build & publish Windows binary
 
 on:
@@ -6,13 +5,13 @@ on:
     types: [created]
 
 permissions:
-  contents: write     # публикация assets к релизу
+  contents: write    # чтобы загружать asset
 
 jobs:
   build-win:
-    runs-on: windows-latest
+    runs-on: windows-2022   # ← гарантированно Windows Server 2022
     env:
-      CI: "true"      # чтобы build.bat знал, что мы в CI
+      CI: "true"
 
     steps:
       - name: Checkout sources
@@ -22,8 +21,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          architecture: "x64"      # можно "x86", если нужны 32-битные EXE
 
-      # ⬇⬇⬇  ВАЖНО: shell: cmd   ⬇⬇⬇
       - name: Install PyInstaller & deps
         shell: cmd
         run: |
@@ -38,6 +37,6 @@ jobs:
       - name: Upload zapret.exe to release
         uses: softprops/action-gh-release@v2
         with:
-          files: zapret/zapret.exe
+          files: zapret/zapret.exe     # путь до вашего EXE
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
