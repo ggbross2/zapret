@@ -5,9 +5,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore    import Qt
 from PyQt6.QtGui     import QGuiApplication, QIcon
 
-from config          import APP_VERSION
-from urls            import INFO_URL, AUTHOR_URL
-from tg_log_delta    import get_client_id
+from config import APP_VERSION # build_info moved to config/__init__.py
+from config.urls            import INFO_URL, AUTHOR_URL
 
 
 from PyQt6.QtWidgets import (
@@ -17,6 +16,8 @@ from PyQt6.QtWidgets import (
 
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
+        from tgram import get_client_id
+
         super().__init__(parent)
         self.setWindowTitle("О программе")
         self.setFixedSize(440, 260)
