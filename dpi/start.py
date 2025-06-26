@@ -48,9 +48,9 @@ class DPIStarter:
             
             try:
                 result = subprocess.run(
-                    'tasklist /FI "IMAGENAME eq winws.exe" /FO CSV /NH',  ##########
-                    shell=True, 
-                    capture_output=True, 
+                    'C:\\Windows\\System32\\tasklist.exe /FI "IMAGENAME eq winws.exe" /FO CSV /NH',
+                    shell=True,
+                    capture_output=True,
                     text=True,
                     timeout=5  # Добавляем таймаут
                 )
