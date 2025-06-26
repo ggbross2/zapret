@@ -1,42 +1,43 @@
-# .github/workflows/windows-build.yml
-name: Windows build (PyInstaller)
+# .github/workflows/windows-release.yml
+name: Build & publish Windows binary
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
+  release:
+    types: [created]
+
+permissions:
+  contents: write     # публикация assets к релизу
 
 jobs:
   build-win:
-    runs-on: windows-latest          # ⇒ GitHub выдаёт Win Server 2022
-    env:                             # переменные видны и в .bat
-      PYTHONUTF8: "1"                # чтобы избежать проблем с кодировкой
-      CI: "true"                     # помечаем, что это CI
+    runs-on: windows-latest
+    env:
+      CI: "true"      # чтобы build.bat знал, что мы в CI
+
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-        
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"     # выберите нужную версию
+          python-version: "3.12"
 
-      # ♦♦♦  Все зависимости, которые нужны build.bat  ♦♦♦
-      - name: Install build deps
+      # ⬇⬇⬇  ВАЖНО: shell: cmd   ⬇⬇⬇
+      - name: Install PyInstaller & deps
+        shell: cmd
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller pywin32
-          if exist requirements.txt pip install -r requirements.txt
+          python -m pip install pyinstaller pywin32
 
-      # ♦♦♦  Запуск .bat  ♦♦♦
-      - name: Run build.bat
-        shell: cmd                   # важно! иначе по умолчанию PowerShell
+      - name: Build EXE (build.bat)
+        shell: cmd
         run: |
           call build.bat --ci
 
-      # ♦♦♦  Сохраняем результат (exe-файл) как артефакт  ♦♦♦
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload zapret.exe to release
+        uses: softprops/action-gh-release@v2
         with:
-          name: zapret-exe
-          path: zapret/zapret.exe
+          files: zapret/zapret.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
