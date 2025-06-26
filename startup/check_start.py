@@ -1,10 +1,16 @@
+#startup/check_start.py
 import os
 import sys
 from PyQt6.QtWidgets import QMessageBox, QApplication
 import ctypes, sys, subprocess, winreg
 
 # Импортируем константы из конфига
-from config.config import BIN_FOLDER
+from config import BIN_FOLDER
+
+# Добавляем импорт кэша
+from startup.check_cache import startup_cache
+
+import psutil
 
 def _native_message(title: str, text: str, style=0x00000010):  # MB_ICONERROR
     """
@@ -12,37 +18,281 @@ def _native_message(title: str, text: str, style=0x00000010):  # MB_ICONERROR
     style: 0x10 = MB_ICONERROR,  0x30 = MB_ICONWARNING | MB_YESNO
     """
     ctypes.windll.user32.MessageBoxW(0, text, title, style)
+
+def check_system_commands() -> tuple[bool, str]:
+    """
+    Проверяет доступность основных системных команд с кэшированием.
+    """
+    # Проверяем кэш (короткое время жизни - 1 час)
+    has_cache, cached_result = startup_cache.is_cached_and_valid("system_commands")
+    if has_cache:
+        return cached_result, ""
+    
+    try:
+        from log import log
+        log("Проверка системных команд", "DEBUG")
+    except ImportError:
+        print("DEBUG: Проверка системных команд")
+    
+    required_commands = [
+        ("tasklist", "tasklist /FI \"IMAGENAME eq explorer.exe\" /FO CSV /NH"),
+    ]
+    
+    failed_commands = []
+    
+    for cmd_name, test_command in required_commands:
+        try:
+            result = subprocess.run(
+                test_command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                encoding="cp866",
+                errors="ignore",
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            
+            if cmd_name == "tasklist":
+                if result.returncode != 0:
+                    stderr_text = result.stderr.strip().lower()
+                    if "не является" in stderr_text or "not recognized" in stderr_text:
+                        failed_commands.append(f"{cmd_name} (команда недоступна)")
+                        try:
+                            from log import log
+                            log(f"ERROR: Команда {cmd_name} недоступна: {result.stderr.strip()}", level="❌ ERROR")
+                        except ImportError:
+                            print(f"ERROR: Команда {cmd_name} недоступна")
+                        continue
+                        
+            if result.returncode not in [0, 1]:
+                failed_commands.append(f"{cmd_name} (код ошибки: {result.returncode})")
+                try:
+                    from log import log
+                    log(f"WARNING: Команда {cmd_name} вернула код {result.returncode}", level="⚠ WARNING")
+                except ImportError:
+                    print(f"WARNING: Команда {cmd_name} вернула код {result.returncode}")
+                    
+        except subprocess.TimeoutExpired:
+            failed_commands.append(f"{cmd_name} (превышен таймаут)")
+            try:
+                from log import log
+                log(f"ERROR: Команда {cmd_name} превысила таймаут", level="❌ ERROR")
+            except ImportError:
+                print(f"ERROR: Команда {cmd_name} превысила таймаут")
+                
+        except FileNotFoundError:
+            failed_commands.append(f"{cmd_name} (файл не найден)")
+            try:
+                from log import log
+                log(f"ERROR: Команда {cmd_name} не найдена", level="❌ ERROR")
+            except ImportError:
+                print(f"ERROR: Команда {cmd_name} не найдена")
+                
+        except Exception as e:
+            failed_commands.append(f"{cmd_name} ({str(e)})")
+            try:
+                from log import log
+                log(f"ERROR: Ошибка при проверке команды {cmd_name}: {e}", level="❌ ERROR")
+            except ImportError:
+                print(f"ERROR: Ошибка при проверке команды {cmd_name}: {e}")
+    
+    has_issues = bool(failed_commands)
+    
+    if has_issues:
+        error_message = (
+            "Обнаружены проблемы с системными командами:\n\n"
+            + "\n".join(f"• {cmd}" for cmd in failed_commands) + 
+            "\n\nЭто может быть вызвано:\n"
+            "• Блокировкой антивирусом (особенно Касперский)\n"
+            "• Политиками безопасности системы\n"
+            "• Повреждением системных файлов\n\n"
+            "Рекомендации:\n"
+            "1. Добавьте программу в исключения антивируса\n"
+            "2. Проверьте целостность файлов командой: sfc /scannow\n"
+            "Программа может работать нестабильно или не запуститься. Лучше всего переустановить Windows!"
+        )
+    else:
+        error_message = ""
+        try:
+            from log import log
+            log("Все системные команды доступны", level="INFO")
+        except ImportError:
+            print("INFO: Все системные команды доступны")
+    
+    # Кэшируем результат (короткое время - 1 час)
+    startup_cache.cache_result("system_commands", has_issues)
+    
+    return has_issues, error_message
+
+def check_startup_conditions():
+    """
+    Выполняет все проверки условий запуска программы с кэшированием
+    """
+    warnings = []       # <- собираем все non-critical
+
+    try:
+        # Все проверки теперь используют кэш автоматически
+        has_cmd_issues, cmd_msg = check_system_commands()
+        if has_cmd_issues:
+            warnings.append(cmd_msg)
+
+        has_gdpi, gdpi_msg = check_goodbyedpi()
+        if has_gdpi:
+            return False, gdpi_msg
+
+        has_mitmproxy, mitmproxy_msg = check_mitmproxy()
+        if has_mitmproxy:
+            return False, mitmproxy_msg
+               
+        if check_if_in_archive():
+            error_message = (
+                "Программа запущена из временной директории.\n\n"
+                "Для корректной работы необходимо распаковать архив в постоянную директорию "
+                "(например, C:\\zapretgui) и запустить программу оттуда.\n\n"
+                "Продолжение работы возможно, но некоторые функции могут работать некорректно."
+            )
+            return False, error_message
+
+        in_onedrive, msg = check_path_for_onedrive()
+        if in_onedrive:
+            return False, msg
+                
+        has_special_chars, error_message = check_path_for_special_chars()
+        if has_special_chars:
+            return False, error_message
+        
+        # если дошли сюда – критичных ошибок нет
+        return True, "\n\n".join(warnings)   # строка может быть пустой
+        
+    except Exception as e:
+        error_message = f"Ошибка при выполнении проверок запуска: {str(e)}"
+        try:
+            from log import log
+            log(error_message, level="❌ ERROR")
+        except ImportError:
+            print(f"ERROR: {error_message}")
+        return False, error_message
+        
+def check_mitmproxy() -> tuple[bool, str]:
+    """
+    Проверяет, запущен ли mitmproxy с кэшированием (короткое время).
+    """
+    # Кэш только на 5 минут для процессов
+    has_cache, cached_result = startup_cache.is_cached_and_valid("mitmproxy_check")
+    if has_cache:
+        return cached_result, ""
+    
+    CONFLICTING_PROCESSES = [
+        "mitmproxy",
+        "mitmdump", 
+        "mitmweb",
+        "mitmproxy.exe",
+        "mitmdump.exe",
+        "mitmweb.exe"
+    ]
+    
+    try:
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                proc_name = proc.info['name'].lower() if proc.info['name'] else ""
+                
+                if any(name.lower() in proc_name for name in CONFLICTING_PROCESSES):
+                    err = (
+                        f"Обнаружен запущенный процесс mitmproxy: {proc.info['name']} (PID: {proc.info['pid']})\n\n"
+                        "mitmproxy использует тот же драйвер WinDivert, что и Zapret.\n"
+                        "Одновременная работа этих программ невозможна.\n\n"
+                        "Пожалуйста, завершите все процессы mitmproxy и перезапустите Zapret."
+                    )
+                    try:
+                        from log import log
+                        log(f"ERROR: Найден конфликтующий процесс mitmproxy: {proc.info['name']} (PID: {proc.info['pid']})", level="❌ ERROR")
+                    except ImportError:
+                        print(f"ERROR: Найден конфликтующий процесс mitmproxy: {proc.info['name']}")
+                    
+                    # Кэшируем отрицательный результат (найден конфликт)
+                    startup_cache.cache_result("mitmproxy_check", True)
+                    return True, err
+                
+                if proc.info['cmdline']:
+                    cmdline = ' '.join(proc.info['cmdline']).lower()
+                    if any(name.lower() in cmdline for name in CONFLICTING_PROCESSES):
+                        err = (
+                            f"Обнаружен запущенный процесс mitmproxy в командной строке: {proc.info['name']} (PID: {proc.info['pid']})\n\n"
+                            "mitmproxy использует тот же драйвер WinDivert, что и Zapret.\n"
+                            "Одновременная работа этих программ невозможна.\n\n"
+                            "Пожалуйста, завершите все процессы mitmproxy и перезапустите Zapret."
+                        )
+                        try:
+                            from log import log
+                            log(f"ERROR: Найден конфликтующий процесс mitmproxy в командной строке: {proc.info['name']} (PID: {proc.info['pid']})", level="❌ ERROR")
+                        except ImportError:
+                            print(f"ERROR: Найден конфликтующий процесс mitmproxy в командной строке: {proc.info['name']}")
+                        
+                        startup_cache.cache_result("mitmproxy_check", True)
+                        return True, err
+                        
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+                
+    except Exception as e:
+        try:
+            from log import log
+            log(f"Ошибка при проверке процессов mitmproxy: {e}", level="⚠ WARNING")
+        except ImportError:
+            print(f"WARNING: Ошибка при проверке процессов mitmproxy: {e}")
+        
+        # При ошибке не кэшируем
+        return False, ""
+    
+    # Кэшируем положительный результат (конфликтов не найдено)
+    startup_cache.cache_result("mitmproxy_check", False)
+    return False, ""
     
 def check_if_in_archive():
     """
-    Проверяет, находится ли EXE-файл в временной директории,
-    что обычно характерно для распаковки из архива.
+    Проверяет, находится ли EXE-файл в временной директории с кэшированием.
     """
+    exe_path = os.path.abspath(sys.executable)
+    
+    # Проверяем кэш с контекстом пути
+    has_cache, cached_result = startup_cache.is_cached_and_valid("archive_check", exe_path)
+    if has_cache:
+        return cached_result
+    
     try:
-        exe_path = os.path.abspath(sys.executable)
         try:
             from log import log
             log(f"Executable path: {exe_path}", level="CHECK_START")
         except ImportError:
-            log(f"DEBUG: Executable path: {exe_path}")
+            print(f"DEBUG: Executable path: {exe_path}")
 
-        # Получаем пути к системным временным директориям
         system32_path = os.path.abspath(os.path.join(os.environ.get("WINDIR", ""), "System32"))
         temp_env = os.environ.get("TEMP", "")
         tmp_env = os.environ.get("TMP", "")
         temp_dirs = [temp_env, tmp_env, system32_path]
         
+        is_in_temp = False
         for temp_dir in temp_dirs:
             if temp_dir and exe_path.lower().startswith(os.path.abspath(temp_dir).lower()):
                 try:
                     from log import log
-                    log(f"EXE запущен из временной директории: {temp_dir}", level="WARNING")
+                    log(f"EXE запущен из временной директории: {temp_dir}", level="⚠ WARNING")
                 except ImportError:
-                    log(f"WARNING: EXE запущен из временной директории: {temp_dir}")
-                return True
-        return False
+                    print(f"WARNING: EXE запущен из временной директории: {temp_dir}")
+                is_in_temp = True
+                break
+        
+        # Кэшируем результат
+        startup_cache.cache_result("archive_check", is_in_temp, exe_path)
+        return is_in_temp
+        
     except Exception as e:
-        log(f"DEBUG: Ошибка при проверке расположения EXE: {str(e)}")
+        try:
+            from log import log
+            log(f"Ошибка при проверке расположения EXE: {str(e)}", level="DEBUG")
+        except ImportError:
+            print(f"DEBUG: Ошибка при проверке расположения EXE: {str(e)}")
         return False
 
 def is_in_onedrive(path: str) -> bool:
@@ -63,11 +313,16 @@ def is_in_onedrive(path: str) -> bool:
 
 def check_path_for_onedrive() -> tuple[bool, str]:
     """
-    Проверяет, лежит ли программа (или вспомогательные папки) в OneDrive.
-    Возвращает (True, msg) если обнаружен OneDrive, иначе (False, "").
+    Проверяет OneDrive в путях с кэшированием.
     """
     current_path = os.path.abspath(os.getcwd())
-    exe_path     = os.path.abspath(sys.executable)
+    exe_path = os.path.abspath(sys.executable)
+    paths_context = f"{current_path}|{exe_path}|{BIN_FOLDER}"
+    
+    # Проверяем кэш с контекстом всех путей
+    has_cache, cached_result = startup_cache.is_cached_and_valid("onedrive_check", paths_context)
+    if has_cache:
+        return cached_result, ""
 
     paths_to_check = [current_path, exe_path, BIN_FOLDER]
 
@@ -81,10 +336,16 @@ def check_path_for_onedrive() -> tuple[bool, str]:
             )
             try:
                 from log import log
-                log(f"ERROR: Обнаружен OneDrive в пути: {path}", level="ERROR")
+                log(f"ERROR: Обнаружен OneDrive в пути: {path}", level="❌ ERROR")
             except ImportError:
-                log(f"ERROR: Обнаружен OneDrive в пути: {path}")
+                print(f"ERROR: Обнаружен OneDrive в пути: {path}")
+            
+            # Кэшируем отрицательный результат
+            startup_cache.cache_result("onedrive_check", True, paths_context)
             return True, err
+    
+    # Кэшируем положительный результат
+    startup_cache.cache_result("onedrive_check", False, paths_context)
     return False, ""
 
 import re
@@ -107,9 +368,10 @@ def contains_special_chars(path: str) -> bool:
     return bool(re.search(r"[^A-Za-z0-9_\.:\\/]", path))
 
 def check_path_for_special_chars():
-    """Проверяет пути программы на наличие специальных символов"""
+    """Проверяет пути программы на наличие специальных символов с кэшированием"""
     current_path = os.path.abspath(os.getcwd())
     exe_path = os.path.abspath(sys.executable)
+    paths_context = f"{current_path}|{exe_path}|{BIN_FOLDER}"
     
     paths_to_check = [current_path, exe_path, BIN_FOLDER]
     
@@ -122,10 +384,16 @@ def check_path_for_special_chars():
             )
             try:
                 from log import log
-                log(f"ERROR: Путь содержит специальные символы: {path}", level="ERROR")
+                log(f"ERROR: Путь содержит специальные символы: {path}", level="❌ ERROR")
             except ImportError:
-                log(f"ERROR: Путь содержит специальных символов: {path}")
+                print(f"ERROR: Путь содержит специальные символы: {path}")
+            
+            # Кэшируем отрицательный результат
+            startup_cache.cache_result("special_chars", True, paths_context)
             return True, error_message
+    
+    # Кэшируем положительный результат
+    startup_cache.cache_result("special_chars", False, paths_context)
     return False, ""
 
 # Изменяем функцию для работы с уже созданным QApplication
@@ -140,7 +408,12 @@ def display_startup_warnings():
     
     if not success:
         # Определяем, является ли ошибка критической
-        is_critical = "специальные символы" in message
+        is_critical = (
+            "специальные символы" in message or 
+            "системными командами" in message or
+            "GoodbyeDPI" in message or
+            "mitmproxy" in message
+        )
 
         app_exists = QApplication.instance() is not None
 
@@ -151,10 +424,15 @@ def display_startup_warnings():
                 _native_message("Критическая ошибка", message, 0x10)
             return False
         else:
+            if message:                        # только предупреждения
+                QMessageBox.information(None,
+                    "Предупреждение при запуске", message)
+    
             if app_exists:
                 result = QMessageBox.warning(
                     None, "Предупреждение",
-                    message,
+                    message + "\n\nПродолжить работу?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No
                 )
                 return result == QMessageBox.StandardButton.Yes
@@ -201,11 +479,12 @@ def _service_exists_sc(name: str) -> bool:
 
 def check_goodbyedpi() -> tuple[bool, str]:
     """
-    True + msg, если обнаружена любая из служб GoodbyeDPI.
+    Проверяет службы GoodbyeDPI с кэшированием.
     """
+    
     SERVICE_NAMES = [
-        "GoodbyeDPI",            # стандартное имя из install_service.bat
-        "GoodbyeDPI Service",
+        "GoodbyeDPI",
+        "GoodbyeDPI Service", 
         "GoodbyeDPI_x64",
         "GoodbyeDPI_x86",
     ]
@@ -216,64 +495,23 @@ def check_goodbyedpi() -> tuple[bool, str]:
                 "Обнаружена установленная служба ГудБайДипиАй "
                 f"её название - {svc}.\n\n"
                 "Zapret GUI несовместим с GoodbyeDPI.\n"
-                "Полностью удалите службу командами:\n"
+                "Полностью удалите службу ДВУМЯ отдельными командами\n"
+                "(запускать консоль от ИМЕНИ АДМИНИСТРАТОРА!):\n"
                 "    sc stop GoodbyeDPI\n"
+                "А потом\n"
                 "    sc delete GoodbyeDPI\n"
                 "Затем перезагрузите ПК и запустите программу снова."
             )
             try:
                 from log import log
-                log(f"ERROR: Найдена служба {svc}", level="ERROR")
+                log(f"ERROR: Найдена служба {svc}", level="❌ ERROR")
             except ImportError:
                 print(f"ERROR: Найдена служба {svc}")
+            
+            # Кэшируем отрицательный результат
+            startup_cache.cache_result("goodbyedpi_check", True)
             return True, err
-    return False, ""
-
-
-
-
-
-def check_startup_conditions():
-    """
-    Выполняет все проверки условий запуска программы
     
-    Возвращает:
-    - tuple: (success, error_message)
-        - success (bool): True если все проверки успешны, False в противном случае
-        - error_message (str): текст сообщения об ошибке, если проверка не пройдена
-    """
-    try:
-        has_gdpi, gdpi_msg = check_goodbyedpi()
-        if has_gdpi:
-            return False, gdpi_msg
-        
-        # Проверка на запуск из архива
-        if check_if_in_archive():
-            error_message = (
-                "Программа запущена из временной директории.\n\n"
-                "Для корректной работы необходимо распаковать архив в постоянную директорию "
-                "(например, C:\\zapretgui) и запустить программу оттуда.\n\n"
-                "Продолжение работы возможно, но некоторые функции могут работать некорректно."
-            )
-            return False, error_message
-
-        # Проверка на наличие OneDrive в пути
-        in_onedrive, msg = check_path_for_onedrive()
-        if in_onedrive:
-            return False, msg
-                
-        # Проверка на специальные символы в пути
-        has_special_chars, error_message = check_path_for_special_chars()
-        if has_special_chars:
-            return False, error_message
-        
-        # Все проверки успешны
-        return True, ""
-    except Exception as e:
-        error_message = f"Ошибка при выполнении проверок запуска: {str(e)}"
-        try:
-            from log import log
-            log(error_message, level="ERROR")
-        except ImportError:
-            log(f"ERROR: {error_message}")
-        return False, error_message
+    # Кэшируем положительный результат
+    startup_cache.cache_result("goodbyedpi_check", False)
+    return False, ""
