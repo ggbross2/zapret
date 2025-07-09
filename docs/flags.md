@@ -8,7 +8,19 @@
 
 ## `.bat`
 Zapret программа консольная, поэтому запускают её на самом деле флаги, которые рассказывают программе как следует работать. Пример ниже:
+```bash
+start "" /b "%EXE%\winws.exe" ^
+--wf-l3=ipv4,ipv6 --wf-tcp=80,443 --wf-udp=443,50000-50100 ^
+--filter-tcp=443 --hostlist="youtube.txt" --hostlist-domains=xvideos.com,xnxx.com --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=4 -dpi-desync-fake-tls="tls_clienthello_18.bin" --dpi-desync-fooling=badseq --new ^
+--filter-tcp=443 --hostlist="discord.txt" --hostlist-domains=ntc.party --dpi-desync=fake,multisplit --dpi-desync-split-pos=sld+1 --dpi-desync-fake-tls=0x0F0F0E0F --dpi-desync-fake-tls="tls_clienthello_14.bin" --dpi-desync-fake-tls-mod=rnd,dupsid --dpi-desync-fooling=badseq --dpi-desync-autottl --dup=2 --dup-fooling=badseq --dup-autottl --dup-cutoff=n3 --new ^
+--filter-tcp=443 --hostlist="faceinsta.txt" --dpi-desync=fake,multisplit --dpi-desync-split-pos=sld+1 --dpi-desync-fake-tls=0x0F0F0E0F --dpi-desync-fake-tls="tls_clienthello_14.bin" --dpi-desync-fake-tls-mod=rnd,dupsid --dpi-desync-fooling=md5sig --dpi-desync-autottl --dup=2 --dup-fooling=md5sig --dup-autottl --dup-cutoff=n3 --new ^
+--filter-tcp=443 --hostlist="other.txt" --hostlist-exclude="faceinsta.txt" --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=6 --dpi-desync-fooling=badseq --new ^
+--filter-udp=443 --hostlist="youtube.txt" --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic="quic_initial_www_google_com.bin" --new ^
+--filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=11 --new ^
+--filter-udp=50000-50099 --filter-l7=discord,stun --dpi-desync=fake --dpi-desync-autottl --dup=2 --dup-autottl --dup-cutoff=n3 --new ^
+```
 
+Разберём в цветах:
 ![image](https://github.com/user-attachments/assets/25e39d09-40ff-4f45-875a-eac04601dbb2)
 
 ## --filter
