@@ -117,3 +117,5 @@ VPN-протоколы — это набор правил, определяющ�
 
 > [!NOTE]
 > Статья подготовлена группой https://t.me/bypassblock
+
+![dd7cc386-b929-43f8-aa67-2f01bdcd34db](https://github.com/user-attachments/assets/af84d6ce-0d05-40ab-8052-d4afb42eb619)
