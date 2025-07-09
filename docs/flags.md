@@ -32,7 +32,7 @@ start "" /b "%EXE%\winws.exe" ^
 ![image](https://github.com/user-attachments/assets/092da5ea-0bdc-42d5-9392-8c4fb18d4c8f)
 
 ## --filter
-![image](https://github.com/user-attachments/assets/41c54057-e689-4eae-af1e-be7b9eed3119)
+![image](https://github.com/user-attachments/assets/64c6ba2a-5899-4a83-98b1-9e4e837bf8ec)
 
 Давайте подробно разберем группу параметров `--filter-...`. Эти параметры используются внутри "профилей" (которые создаются с помощью `--new`) в `nfqws` для того, чтобы точно указать, к какому именно интернет-трафику должен применяться данный конкретный профиль с его набором "трюков".
 
