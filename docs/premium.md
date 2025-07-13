@@ -17,3 +17,13 @@ Zapret полностью бесплатная программа. И такой
 
 ### Дополнительные темы
 <img width="1780" height="1841" alt="image" src="https://github.com/user-attachments/assets/ee0a4a72-4351-410b-a7e8-413b61b7e445" />
+
+## Уровень "MasterVLESS"
+- Выдаёт личный VPN сервер через протокол Vless
+- Обход всех GEO-ограничений (ChatGPT, Twitch и т.д.)
+- Безлимитная скорость (почти не режется)
+- Низкий пинг (подходит для игр)
+- Безлимитное количество устройств (Windows, Android, IOS и т.д.)
+
+### Скорость интернета
+<img width="539" height="374" alt="image" src="https://github.com/user-attachments/assets/aaed0c77-131c-4b88-b458-59cdeaed0819" />
