@@ -1,5 +1,7 @@
 <h1 align="center"><img src="https://i.imgur.com/uABXHHI.png" width="30px"></img> <a href="https://github.com/bol-van/zapret">Zapret</a> (Запрет: обход блокировки Дискорда и Ютуба) </h1>
 
+### [🛡 Что это такое?](https://github.com/youtubediscord/zapret/blob/main/docs/whatfuckthis.md) | [🚀 Как настроить под себя](https://github.com/youtubediscord/zapret/blob/main/docs/flags.md) | [❓ FAQ](https://github.com/youtubediscord/zapret/blob/main/docs/faq.md)
+
 Один из самых популярных GUI лаунчеров для программы Запрет.
 
 Мы собрали и продолжаем собирать свыше 50 стратегий обхода блокировок для Discord и YouTube. **Вы можете добавить свою Если напишите нам в Issues!** 
@@ -59,9 +61,6 @@ https://github.com/youtubediscord/zapret/blob/main/docs/build.md
 
 <h2 align="center">Хочу узнать подробнее </h2>
 
-### [❓ FAQ](https://github.com/youtubediscord/zapret/blob/main/docs/faq.md)
-### [🛡 Что такое Zapret](https://teletype.in/@censorliber/zapretvpndpi)
-### [Как работает Запрет](https://github.com/youtubediscord/zapret/blob/main/docs/flags.md)
 ### [👾 О вирусах](https://teletype.in/@censorliber/zapretvirus)
 
 > [!CAUTION]  
