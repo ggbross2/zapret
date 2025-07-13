@@ -16,4 +16,4 @@ Zapret полностью бесплатная программа. И такой
 - _Дополнительные фунции в следующих обновлениях...._
 
 ### Дополнительные темы
-<img width="1785" height="1841" alt="image" src="https://github.com/user-attachments/assets/83ef0721-2c02-463f-b9cd-f225508ef4fa" />
+<img width="1780" height="1841" alt="image" src="https://github.com/user-attachments/assets/ee0a4a72-4351-410b-a7e8-413b61b7e445" />
