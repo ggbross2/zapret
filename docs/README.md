@@ -1,6 +1,7 @@
 <h1 align="center"><img src="https://i.imgur.com/uABXHHI.png" width="30px"></img> <a href="https://github.com/bol-van/zapret">Zapret</a> (Запрет: обход блокировки Дискорда и Ютуба) </h1>
 
-### [🛡 Что это такое?](https://github.com/youtubediscord/zapret/blob/main/docs/whatfuckthis.md) | [🚀 Как настроить под себя](https://github.com/youtubediscord/zapret/blob/main/docs/flags.md) | [❓ FAQ](https://github.com/youtubediscord/zapret/blob/main/docs/faq.md) | [⛔ Не работает!](https://github.com/youtubediscord/zapret/blob/main/docs/zapretnotworking.md)
+### [🛡 Что это такое?](https://github.com/youtubediscord/zapret/blob/main/docs/whatfuckthis.md) | [🚀 Как настроить под себя](https://github.com/youtubediscord/zapret/blob/main/docs/flags.md) | [❓ FAQ](https://github.com/youtubediscord/zapret/blob/main/docs/faq.md)
+### [⛔ Не работает!](https://github.com/youtubediscord/zapret/blob/main/docs/zapretnotworking.md) | [👾 О вирусах](https://teletype.in/@censorliber/zapretvirus)
 
 Один из самых популярных GUI лаунчеров для программы Запрет.
 
@@ -61,8 +62,6 @@ https://github.com/youtubediscord/zapret/blob/main/docs/build.md
 
 <h2 align="center">Хочу узнать подробнее </h2>
 
-### [👾 О вирусах](https://teletype.in/@censorliber/zapretvirus)
-
 > [!CAUTION]  
 > [Касперский](https://github.com/bol-van/zapret/issues/611) и иные российские вирусы начали войну с запретами и иными средствами обхода блокировок. Чтобы использовать их спокойно рекомендуется перейти на **альтернативные** антивирусы (Defender, ESET32 и т.д.), которые не выдают ложные и обманчивые срабатывания и помогают от большего количества угроз. Также не следует использовать российские антивирусы, либо добавлять файлы в исключения.
 
@@ -82,7 +81,7 @@ https://github.com/youtubediscord/zapret/blob/main/docs/build.md
 > [!TIP]  
 > Если совсем отчаетесь то можете написать в [ЛС **БЕСПЛАТНЫЙ** запрос на удалённую настройку](https://t.me/youtubenotwork/4764) через AnyDesk. В любой момент подключение можно завершить и удалить программу.
 > 
-> Поддержать разработчиков https://boosty.to/censorliber
+> Поддержать разработчиков https://t.me/zapretvpns_bot
 
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=youtubediscord/zapret&type=Date&theme=dark" />
