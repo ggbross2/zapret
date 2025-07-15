@@ -30,10 +30,14 @@ Zapret полностью бесплатная программа. И такой
 - Обход всех GEO-ограничений (ChatGPT, Twitch и т.д.)
 - Безлимитная скорость (почти не режется)
 - Низкий пинг (подходит для игр)
+- Доступны сервисы deepl.com, все ИИ сервисы, notebooklm.google, chatgpt.com, brawl stars и многое другое!
 - Безлимитное количество устройств (Windows, Android, IOS и т.д.)
+
 
 ### Скорость интернета
 <img width="539" height="374" alt="image" src="https://github.com/user-attachments/assets/aaed0c77-131c-4b88-b458-59cdeaed0819" />
+
+Ещё одни замеры: https://www.speedtest.net/result/17978772715
 
 > [!TIP]
 > Оплатить подписку Вы можете в нашем боте: https://t.me/zapretvpns_bot. Также там доступны актуальные цены.
