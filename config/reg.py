@@ -118,43 +118,6 @@ def set_dpi_autostart(state: bool) -> bool:
     """Сохраняет флаг автозапуска DPI в реестре."""
     return reg(_DPI_KEY, _DPI_NAME, 1 if state else 0)
 
-# ───────────── Автозагрузка стратегий ─────────────
-_STRAT_KEY  = r"Software\Zapret"
-_STRAT_NAME = "StrategyAutoLoad"        # REG_DWORD (1/0)
-
-def get_strategy_autoload() -> bool:
-    """True – разрешено скачивать стратегии с GitHub, False – запрещено."""
-    val = reg(_STRAT_KEY, _STRAT_NAME)         # None → параметр отсутствует
-    return bool(val) if val is not None else True   # дефолт = True
-
-def set_strategy_autoload(enabled: bool) -> bool:
-    """Включает/выключает автозагрузку стратегий."""
-    return reg(_STRAT_KEY, _STRAT_NAME, 1 if enabled else 0)
-
-def get_auto_download_enabled() -> bool:
-    """Проверяет, включена ли автоматическая загрузка при старте"""
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY) as key:
-            value, _ = winreg.QueryValueEx(key, "AutoDownloadEnabled")
-            return bool(value)
-    except FileNotFoundError:
-        return True  # По умолчанию включено
-    except Exception as e:
-        log(f"Ошибка чтения настройки автозагрузки: {e}", "❌ ERROR")
-        return True
-
-def set_auto_download_enabled(enabled: bool):
-    """Устанавливает состояние автоматической загрузки"""
-    try:
-        # Создаем ключ если его нет
-        winreg.CreateKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY)
-        
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY, 0, winreg.KEY_SET_VALUE) as key:
-            winreg.SetValueEx(key, "AutoDownloadEnabled", 0, winreg.REG_DWORD, int(enabled))
-        log(f"Автозагрузка {'включена' if enabled else 'отключена'}", "INFO")
-    except Exception as e:
-        log(f"Ошибка записи настройки автозагрузки: {e}", "❌ ERROR")
-
 
 def get_subscription_check_interval() -> int:
     """Возвращает интервал проверки подписки в минутах (по умолчанию 10)"""
@@ -175,3 +138,135 @@ def set_subscription_check_interval(minutes: int):
             winreg.SetValueEx(key, "SubscriptionCheckInterval", 0, winreg.REG_DWORD, int(minutes))
     except Exception as e:
         log(f"Ошибка записи интервала проверки подписки: {e}", "❌ ERROR")
+
+# ───────────── Удаление GitHub API из hosts ─────────────
+_GITHUB_API_KEY  = r"Software\Zapret"
+_GITHUB_API_NAME = "RemoveGitHubAPI"     # REG_DWORD (1/0)
+
+def get_remove_github_api() -> bool:
+    """True – удалять api.github.com из hosts при запуске, False – не удалять."""
+    val = reg(_GITHUB_API_KEY, _GITHUB_API_NAME)
+    return bool(val) if val is not None else True
+
+def set_remove_github_api(enabled: bool) -> bool:
+    """Включает/выключает удаление api.github.com из hosts при запуске."""
+    return reg(_GITHUB_API_KEY, _GITHUB_API_NAME, 1 if enabled else 0)
+
+# ───────────── Выбранные стратегии для прямого запуска ─────────────
+_DIRECT_STRATEGY_KEY = r"Software\Zapret"
+_DIRECT_YOUTUBE_NAME = "DirectStrategyYoutube"
+_DIRECT_DISCORD_NAME = "DirectStrategyDiscord"
+_DIRECT_DISCORD_VOICE_NAME = "DirectStrategyDiscordVoice"
+_DIRECT_OTHER_NAME = "DirectStrategyOther"
+
+def get_direct_strategy_selections() -> dict:
+    """Возвращает сохраненные выборы стратегий для прямого запуска"""
+    try:
+        youtube = reg(_DIRECT_STRATEGY_KEY, _DIRECT_YOUTUBE_NAME)
+        discord = reg(_DIRECT_STRATEGY_KEY, _DIRECT_DISCORD_NAME)
+        discord_voice = reg(_DIRECT_STRATEGY_KEY, _DIRECT_DISCORD_VOICE_NAME)
+        other = reg(_DIRECT_STRATEGY_KEY, _DIRECT_OTHER_NAME)
+        
+        # Возвращаем значения по умолчанию если что-то не найдено
+        from strategy_menu.strategy_lists_separated import get_default_selections
+        default_selections = get_default_selections()
+        
+        selections = {
+            'youtube': youtube if youtube else default_selections.get('youtube'),
+            'discord': discord if discord else default_selections.get('discord'),
+            'discord_voice': discord_voice if discord_voice else default_selections.get('discord_voice'),
+            'other': other if other else default_selections.get('other')
+        }
+        
+        log(f"Загружены выборы стратегий из реестра: {selections}", "DEBUG")
+        return selections
+        
+    except Exception as e:
+        log(f"Ошибка загрузки выборов стратегий: {e}", "❌ ERROR")
+        # Возвращаем значения по умолчанию
+        from strategy_menu.strategy_lists_separated import get_default_selections
+        return get_default_selections()
+
+def set_direct_strategy_selections(selections: dict) -> bool:
+    """Сохраняет выборы стратегий для прямого запуска в реестр"""
+    try:
+        success = True
+        
+        if 'youtube' in selections:
+            success &= reg(_DIRECT_STRATEGY_KEY, _DIRECT_YOUTUBE_NAME, selections['youtube'])
+        
+        if 'discord' in selections:
+            success &= reg(_DIRECT_STRATEGY_KEY, _DIRECT_DISCORD_NAME, selections['discord'])
+        
+        if 'discord_voice' in selections:
+            success &= reg(_DIRECT_STRATEGY_KEY, _DIRECT_DISCORD_VOICE_NAME, selections['discord_voice'])
+            
+        if 'other' in selections:
+            success &= reg(_DIRECT_STRATEGY_KEY, _DIRECT_OTHER_NAME, selections['other'])
+        
+        if success:
+            log(f"Сохранены выборы стратегий в реестр: {selections}", "DEBUG")
+        else:
+            log("Ошибка при сохранении некоторых выборов стратегий", "⚠ WARNING")
+            
+        return success
+        
+    except Exception as e:
+        log(f"Ошибка сохранения выборов стратегий: {e}", "❌ ERROR")
+        return False
+
+def get_direct_strategy_youtube() -> str:
+    """Возвращает сохраненную YouTube стратегию"""
+    result = reg(_DIRECT_STRATEGY_KEY, _DIRECT_YOUTUBE_NAME)
+    if result:
+        return result
+    
+    # Значение по умолчанию
+    from strategy_menu.strategy_lists_separated import get_default_selections
+    return get_default_selections().get('youtube', 'multisplit_seqovl_midsld')
+
+def set_direct_strategy_youtube(strategy_id: str) -> bool:
+    """Сохраняет выбранную YouTube стратегию"""
+    return reg(_DIRECT_STRATEGY_KEY, _DIRECT_YOUTUBE_NAME, strategy_id)
+
+def get_direct_strategy_discord() -> str:
+    """Возвращает сохраненную Discord стратегию"""
+    result = reg(_DIRECT_STRATEGY_KEY, _DIRECT_DISCORD_NAME)
+    if result:
+        return result
+    
+    # Значение по умолчанию
+    from strategy_menu.strategy_lists_separated import get_default_selections
+    return get_default_selections().get('discord', 'dis4')
+
+def set_direct_strategy_discord(strategy_id: str) -> bool:
+    """Сохраняет выбранную Discord стратегию"""
+    return reg(_DIRECT_STRATEGY_KEY, _DIRECT_DISCORD_NAME, strategy_id)
+
+def get_direct_strategy_discord_voice() -> str:
+    """Возвращает сохраненную Discord Voice стратегию"""
+    result = reg(_DIRECT_STRATEGY_KEY, _DIRECT_DISCORD_VOICE_NAME)
+    if result:
+        return result
+    
+    # Значение по умолчанию
+    from strategy_menu.strategy_lists_separated import get_default_selections
+    return get_default_selections().get('discord_voice', 'ipv4_dup2_autottl_cutoff_n3')
+
+def set_direct_strategy_discord_voice(strategy_id: str) -> bool:
+    """Сохраняет выбранную Discord Voice стратегию"""
+    return reg(_DIRECT_STRATEGY_KEY, _DIRECT_DISCORD_VOICE_NAME, strategy_id)
+
+def get_direct_strategy_other() -> str:
+    """Возвращает сохраненную стратегию для остальных сайтов"""
+    result = reg(_DIRECT_STRATEGY_KEY, _DIRECT_OTHER_NAME)
+    if result:
+        return result
+    
+    # Значение по умолчанию
+    from strategy_menu.strategy_lists_separated import get_default_selections
+    return get_default_selections().get('other', 'other_seqovl')
+
+def set_direct_strategy_other(strategy_id: str) -> bool:
+    """Сохраняет выбранную стратегию для остальных сайтов"""
+    return reg(_DIRECT_STRATEGY_KEY, _DIRECT_OTHER_NAME, strategy_id)
