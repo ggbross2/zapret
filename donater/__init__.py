@@ -7,5 +7,5 @@ from .subscription_dialog import SubscriptionDialog
 
 __all__ = [
     'DonateChecker',
-    'SubscriptionDialog',
+    'SubscriptionDialog'
 ]
