@@ -1,6 +1,6 @@
-# hosts.py
-
 import ctypes
+import stat
+import os
 from pathlib import Path
 from PyQt6.QtWidgets import QMessageBox
 from .proxy_domains import PROXY_DOMAINS
@@ -34,6 +34,28 @@ def check_hosts_file_name():
     # Если ни того, ни другого нет
     return False, "Файл hosts не найден"
 
+def is_file_readonly(filepath):
+    """Проверяет, установлен ли атрибут 'только для чтения' у файла"""
+    try:
+        file_stat = os.stat(filepath)
+        return not (file_stat.st_mode & stat.S_IWRITE)
+    except Exception as e:
+        log(f"Ошибка при проверке атрибутов файла: {e}")
+        return False
+
+def remove_readonly_attribute(filepath):
+    """Снимает атрибут 'только для чтения' с файла"""
+    try:
+        # Получаем текущие атрибуты файла
+        file_stat = os.stat(filepath)
+        # Добавляем право на запись
+        os.chmod(filepath, file_stat.st_mode | stat.S_IWRITE)
+        log(f"Атрибут 'только для чтения' снят с файла: {filepath}")
+        return True
+    except Exception as e:
+        log(f"Ошибка при снятии атрибута 'только для чтения': {e}")
+        return False
+
 def safe_read_hosts_file():
     """Безопасно читает файл hosts с обработкой различных кодировок"""
     hosts_path = HOSTS_PATH
@@ -64,8 +86,18 @@ def safe_read_hosts_file():
 def safe_write_hosts_file(content):
     """Безопасно записывает файл hosts с правильной кодировкой"""
     try:
+        # Проверяем атрибут "только для чтения" перед записью
+        if is_file_readonly(HOSTS_PATH):
+            log("Файл hosts имеет атрибут 'только для чтения', пытаемся снять...")
+            if not remove_readonly_attribute(HOSTS_PATH):
+                log("Не удалось снять атрибут 'только для чтения'")
+                return False
+        
         HOSTS_PATH.write_text(content, encoding="utf-8-sig", newline='\n')
         return True
+    except PermissionError:
+        log("Ошибка доступа при записи файла hosts (возможно, нет прав администратора)")
+        return False
     except Exception as e:
         log(f"Ошибка при записи файла hosts: {e}")
         return False
@@ -73,6 +105,119 @@ def safe_write_hosts_file(content):
 class HostsManager:
     def __init__(self, status_callback=None):
         self.status_callback = status_callback
+        # 🆕 При инициализации проверяем и удаляем api.github.com
+        self.check_and_remove_github_api()
+
+    # 🆕 НОВЫЕ МЕТОДЫ ДЛЯ РАБОТЫ С api.github.com
+    def check_github_api_in_hosts(self):
+        """Проверяет, есть ли запись api.github.com в hosts файле"""
+        try:
+            content = safe_read_hosts_file()
+            if content is None:
+                return False
+                
+            lines = content.splitlines()
+            
+            for line in lines:
+                line = line.strip()
+                # Пропускаем пустые строки и комментарии
+                if not line or line.startswith('#'):
+                    continue
+                    
+                # Разбиваем строку на части (IP домен)
+                parts = line.split()
+                if len(parts) >= 2:
+                    domain = parts[1]  # Второй элемент - это домен
+                    if domain.lower() == "api.github.com":
+                        return True
+                        
+            return False
+        except Exception as e:
+            log(f"Ошибка при проверке api.github.com в hosts: {e}")
+            return False
+
+    def remove_github_api_from_hosts(self):
+        """Принудительно удаляет запись api.github.com из hosts файла"""
+        try:
+            content = safe_read_hosts_file()
+            if content is None:
+                log("Не удалось прочитать файл hosts для удаления api.github.com")
+                return False
+                
+            lines = content.splitlines(keepends=True)
+            new_lines = []
+            removed_lines = []
+            
+            for line in lines:
+                line_stripped = line.strip()
+                # Пропускаем пустые строки и комментарии
+                if not line_stripped or line_stripped.startswith('#'):
+                    new_lines.append(line)
+                    continue
+                    
+                # Разбиваем строку на части (IP домен)
+                parts = line_stripped.split()
+                if len(parts) >= 2:
+                    domain = parts[1]  # Второй элемент - это домен
+                    if domain.lower() == "api.github.com":
+                        # Нашли запись api.github.com - не добавляем её в новый файл
+                        removed_lines.append(line_stripped)
+                        log(f"Удаляем из hosts: {line_stripped}")
+                        continue
+                
+                # Добавляем все остальные строки
+                new_lines.append(line)
+            
+            if removed_lines:
+                # Убираем лишние пустые строки в конце файла
+                while new_lines and new_lines[-1].strip() == "":
+                    new_lines.pop()
+                
+                # Оставляем одну пустую строку в конце, если файл не пустой
+                if new_lines and not new_lines[-1].endswith('\n'):
+                    new_lines[-1] += '\n'
+                elif new_lines:
+                    new_lines.append('\n')
+
+                if not safe_write_hosts_file("".join(new_lines)):
+                    log("Не удалось записать файл hosts после удаления api.github.com")
+                    return False
+                
+                log(f"✅ Удалена запись api.github.com из hosts файла: {removed_lines}")
+                self.set_status("Запись api.github.com удалена из hosts файла")
+                return True
+            else:
+                log("Запись api.github.com не найдена в hosts файле")
+                return True  # Не ошибка, просто нет записи
+                
+        except PermissionError:
+            log("Нет прав для удаления api.github.com из hosts файла")
+            return False
+        except Exception as e:
+            log(f"Ошибка при удалении api.github.com из hosts: {e}")
+            return False
+
+    def check_and_remove_github_api(self):
+        """Проверяет и при необходимости удаляет api.github.com из hosts"""
+        try:
+            # Импортируем функцию для проверки настройки реестра
+            from config import get_remove_github_api
+            
+            # Проверяем, разрешено ли удаление GitHub API
+            if not get_remove_github_api():
+                log("⚙️ Удаление api.github.com отключено в настройках")
+                return
+                
+            if self.check_github_api_in_hosts():
+                log("🔍 Обнаружена запись api.github.com в hosts файле - принудительно удаляем...")
+                if self.remove_github_api_from_hosts():
+                    log("✅ Запись api.github.com успешно удалена из hosts")
+                else:
+                    log("❌ Не удалось удалить api.github.com из hosts")
+            else:
+                log("✅ Запись api.github.com не найдена в hosts файле")
+        except Exception as e:
+            log(f"Ошибка при проверке/удалении api.github.com: {e}")
 
     # ------------------------- HostsSelectorDialog -------------------------
     def show_hosts_selector_dialog(self, parent=None):
@@ -211,9 +356,31 @@ class HostsManager:
             if content is None:
                 return False
             
+            # Проверяем атрибут "только для чтения"
+            if is_file_readonly(HOSTS_PATH):
+                log("Файл hosts имеет атрибут 'только для чтения'")
+                # Показываем предупреждение пользователю
+                warning_msg = (
+                    f"Файл hosts имеет атрибут 'только для чтения'.\n\n"
+                    f"Программа попытается автоматически снять этот атрибут\n"
+                    f"при сохранении изменений.\n\n"
+                    f"Если это не поможет, снимите атрибут вручную:\n"
+                    f"1. Откройте свойства файла hosts\n"
+                    f"2. Снимите галочку 'Только для чтения'"
+                )
+                self.show_popup_message("Файл только для чтения", warning_msg, "warning")
+            
             # Проверяем возможность записи (пробуем открыть в режиме добавления)
-            with HOSTS_PATH.open("a", encoding="utf-8-sig") as f:
-                pass
+            try:
+                with HOSTS_PATH.open("a", encoding="utf-8-sig") as f:
+                    pass
+            except PermissionError:
+                # Если не можем открыть для записи, но файл НЕ readonly, 
+                # значит действительно нет прав администратора
+                if not is_file_readonly(HOSTS_PATH):
+                    raise
+                # Если файл readonly, попробуем снять атрибут
+                log("Не удается открыть файл для записи из-за атрибута 'только для чтения'")
             
             return True
             
@@ -233,15 +400,36 @@ class HostsManager:
             self.show_popup_message("Ошибка", error_msg, "critical")
             return False
 
+    def _no_perm(self):
+        """Обработка ошибки прав доступа"""
+        error_msg = (
+            f"Нет прав для изменения файла hosts.\n\n"
+            f"Возможные причины:\n"
+            f"• Программа запущена без прав администратора\n"
+            f"• Файл hosts имеет атрибут 'только для чтения'\n"
+            f"• Антивирус блокирует доступ к файлу\n\n"
+            f"Решения:\n"
+            f"1. Запустите программу от имени администратора\n"
+            f"2. Проверьте свойства файла hosts и снимите галочку 'Только для чтения'\n"
+            f"3. Временно отключите антивирус"
+        )
+        self.set_status("Нет прав для изменения файла hosts")
+        self.show_popup_message("Ошибка доступа", error_msg, "warning")
+        log("Нет прав для изменения файла hosts")
+
     def add_proxy_domains(self) -> bool:
         """
         1. Удаляем старые записи (если были).
-        2. Добавляем свежие в конец hosts.
+        2. Проверяем и удаляем api.github.com (если есть).
+        3. Добавляем свежие в конец hosts.
         """
         # Проверяем доступность файла hosts перед операцией
         if not self.is_hosts_file_accessible():
             self.set_status("Файл hosts недоступен для изменения")
             return False
+        
+        # 🆕 Проверяем и удаляем api.github.com перед добавлением доменов
+        self.check_and_remove_github_api()
             
         if not self.remove_proxy_domains():     # не смогли удалить → дальше смысла нет
             return False
@@ -286,6 +474,9 @@ class HostsManager:
         if not self.is_hosts_file_accessible():
             self.set_status("Файл hosts недоступен для изменения")
             return False
+        
+        # 🆕 Проверяем и удаляем api.github.com перед применением доменов
+        self.check_and_remove_github_api()
         
         # Создаем временный словарь только с выбранными доменами
         selected_proxy_domains = {
@@ -351,6 +542,9 @@ class HostsManager:
         if not self.is_hosts_file_accessible():
             self.set_status("Файл hosts недоступен для изменения")
             return False
+        
+        # 🆕 Проверяем и удаляем api.github.com перед удалением доменов
+        self.check_and_remove_github_api()
             
         try:
             content = safe_read_hosts_file()
