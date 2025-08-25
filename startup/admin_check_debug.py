@@ -35,7 +35,7 @@ def debug_admin_status():
     TokenElevation = 20
     
     # GetCurrentProcess возвращает псевдо-хэндл -1
-    current_process = kernel32.GetCurrentProcess()
+    current_process = wintypes.HANDLE(kernel32.GetCurrentProcess())
     
     hToken = wintypes.HANDLE()
     # Исправлен вызов OpenProcessToken
