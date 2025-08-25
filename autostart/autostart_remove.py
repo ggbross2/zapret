@@ -1,144 +1,181 @@
 # autostart_remove.py
+# ────────────────────────────────────────────────────────────────────────────
+# «Пылесос» для всех видов автозапуска Zapret
+#
+#   • ярлыки в %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
+#   • ветка HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+#   • задачи Планировщика  (ZapretStrategy / ZapretCensorliber)
+#   • службы Windows       (ZapretCensorliber)
+#
+# Если появляется ещё одна служба/задача/ярлык — просто добавьте имя в
+# соответствующий список/кортеж ниже, и чистильщик автоматически удалит её.
+# ────────────────────────────────────────────────────────────────────────────
 
-"""
-Удаление ВСЕХ способов автозапуска Zapret:
-  ярлыки в Startup
-  CurrentVersion\\Run
-  задачи планировщика (ZapretStrategy / ZapretCensorliber)
-  старая служба ZapretCensorliber
-"""
-
-import os
-import subprocess
-import time
-import winreg
+from __future__ import annotations
+import os, subprocess, time, winreg
 from pathlib import Path
-
-# логгер ожидается такой же, как в проекте
+from typing import Callable, Iterable
+from utils import run_hidden
 from log import log
+from .autostart_direct import remove_direct_autostart
 
 
 class AutoStartCleaner:
-    def __init__(self,
-                 service_name: str = "ZapretCensorliber",
-                 status_cb=None):
-        """
-        Args:
-            service_name : имя устаревшей службы, которую нужно снести
-            status_cb    : функция status_cb(str) → None  (можно None)
-        """
-        self.service_name = service_name
+    """
+    Полностью убирает все механизмы автозапуска, связанные с проектом Zapret.
+    """
+
+
+    STARTUP_SHORTCUTS: tuple[str, ...] = ("ZapretGUI.lnk", "ZapretStrategy.lnk")
+    SCHEDULER_TASKS:   tuple[str, ...] = (
+        "ZapretStrategy", 
+        "ZapretCensorliber",
+        "ZapretDirect_AutoStart",
+        "ZapretDirect",
+        "ZapretGUI_AutoStart"
+    )
+    SERVICE_NAMES:     tuple[str, ...] = (
+        "ZapretCensorliber", 
+        "ZapretDirect"
+    )
+
+    def __init__(
+        self,
+        *,
+        service_names: Iterable[str] | None = None,
+        status_cb: Callable[[str], None] | None = None,
+    ):
+        self.service_names = tuple(service_names) if service_names else self.SERVICE_NAMES
         self._status_cb = status_cb
 
-    # ---------- helpers --------------------------------------------------
     def _status(self, msg: str):
         if self._status_cb:
             self._status_cb(msg)
 
-    # =====================================================================
-    # 1) ЯРЛЫКИ
-    # =====================================================================
-    def _remove_startup_shortcuts(self) -> bool:
-        startup_dir = (
-            Path(os.environ["APPDATA"]) /
-            "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
-        )
-        removed = False
-        for lnk in ("ZapretGUI.lnk", "ZapretStrategy.lnk"):
-            p = startup_dir / lnk
-            if p.exists():
-                try:
-                    p.unlink()
-                    log(f"Ярлык автозапуска удалён: {p}", "INFO")
-                    removed = True
-                except Exception as e:
-                    log(f"Не удалось удалить ярлык {p}: {e}", "⚠ WARNING")
-        return removed
-
-    # =====================================================================
-    # 2) CurrentVersion\Run
-    # =====================================================================
-    @staticmethod
-    def _remove_autostart_registry() -> bool:
-        try:
-            key_path = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                                key_path, 0, winreg.KEY_WRITE) as key:
-                try:
-                    winreg.DeleteValue(key, "ZapretGUI")
-                    log("Запись автозапуска в реестре удалена", "INFO")
-                    return True
-                except FileNotFoundError:
-                    return False
-        except Exception as e:
-            log(f"Ошибка удаления из реестра: {e}", "❌ ERROR")
-            return False
-
-    # =====================================================================
-    # 3) Планировщик задач
-    # =====================================================================
-    @staticmethod
-    def _remove_scheduler_tasks() -> bool:
-        removed_any = False
-        for task in ("ZapretStrategy", "ZapretCensorliber"):
-            check = subprocess.run(f'schtasks /Query /TN "{task}" 2>nul',
-                                   shell=True, capture_output=True)
-            if check.returncode == 0:
-                log(f"Найдена задача {task}, удаляем…", "INFO")
-                subprocess.run(f'schtasks /Delete /TN "{task}" /F',
-                               shell=True, check=False)
-                removed_any = True
-        return removed_any or False
-
-    # =====================================================================
-    # 4) Служба Windows
-    # =====================================================================
-    def _remove_legacy_service(self) -> bool:
-        svc = self.service_name
-        query = subprocess.run(f'sc query "{svc}"',
-                               shell=True,
-                               capture_output=True,
-                               text=True, encoding="cp866")
-        if query.returncode != 0:
-            return False     # службы нет – нечего удалять
-
-        self._status("Остановка устаревшей службы…")
-        log(f"Останавливаем службу {svc}", "INFO")
-        subprocess.run(f'sc stop "{svc}"', shell=True, capture_output=True)
-        time.sleep(1)
-
-        self._status("Удаление устаревшей службы…")
-        log(f"Удаляем службу {svc}", "INFO")
-        delete = subprocess.run(f'sc delete "{svc}"',
-                                shell=True,
-                                capture_output=True,
-                                text=True, encoding="cp866")
-        ok = delete.returncode == 0
-        if ok:
-            log("Служба успешно удалена", "INFO")
-        else:
-            err = delete.stderr.strip() or delete.stdout.strip()
-            log(f"Ошибка удаления службы: {err}", "❌ ERROR")
-        return ok
-
-    # =====================================================================
-    # 5) ПУБЛИЧНЫЙ МЕТОД
-    # =====================================================================
     def run(self) -> bool:
         """
-        Запускает полное «подметание».
-        Возвращает True, если удалось удалить ХОТЯ БЫ один механизм.
+        Запускает полное удаление всех механизмов автозапуска
         """
         log("Удаление всех механизмов автозапуска…", "INFO")
+
         shortcuts = self._remove_startup_shortcuts()
         tasks     = self._remove_scheduler_tasks()
-        service   = self._remove_legacy_service()
         registry  = self._remove_autostart_registry()
 
-        removed_any = any((shortcuts, tasks, service, registry))
+        services_removed_any = False
+        for svc in self.service_names:
+            if self._remove_service(svc):
+                services_removed_any = True
+
+        # Удаляем Direct автозапуск
+        direct_removed = remove_direct_autostart()  # НОВОЕ
+
+        removed_any = any((shortcuts, tasks, services_removed_any, registry, direct_removed))
+        
         if removed_any:
             log("Механизмы автозапуска удалены", "INFO")
         else:
             log("Механизмы автозапуска не найдены", "INFO")
 
         return removed_any
+
+    # ======================================================================
+    # 1) ЯРЛЫКИ  %APPDATA%\...\Startup
+    # ======================================================================
+    def _remove_startup_shortcuts(self) -> bool:
+        startup_dir = (Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup")
+        removed = False
+        for lnk in self.STARTUP_SHORTCUTS:
+            p = startup_dir / lnk
+            if p.exists():
+                try:
+                    p.unlink()
+                    log(f"Ярлык автозапуска удалён: {p}", "INFO")
+                    removed = True
+                except Exception as exc:
+                    log(f"Не удалось удалить ярлык {p}: {exc}", "⚠ WARNING")
+        return removed
+
+    # ======================================================================
+    # 2) Реестр  HKCU\...\Run
+    # ======================================================================
+    @staticmethod
+    def _remove_autostart_registry() -> bool:
+        key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE) as key:
+                try:
+                    winreg.DeleteValue(key, "ZapretGUI")
+                    log("Запись автозапуска в реестре удалена", "INFO")
+                    return True
+                except FileNotFoundError:
+                    return False
+        except Exception as exc:
+            log(f"Ошибка удаления из реестра: {exc}", "❌ ERROR")
+            return False
+
+    # ======================================================================
+    # 3) Планировщик задач
+    # ======================================================================
+    @classmethod
+    def _remove_scheduler_tasks(cls) -> bool:
+        removed_any = False
+        for task in cls.SCHEDULER_TASKS:
+            check = run_hidden(
+                ["C:\\Windows\\System32\\schtasks.exe", "/Query", "/TN", task],
+                capture_output=True,
+                text=True,
+                encoding="cp866",
+                errors="ignore",
+            )
+            if check.returncode == 0:
+                log(f"Найдена задача {task}, удаляем…", "INFO")
+                run_hidden(
+                    ["C:\\Windows\\System32\\schtasks.exe", "/Delete", "/TN", task, "/F"],
+                    capture_output=True,
+                    text=True,
+                )
+                removed_any = True
+        return removed_any
+
+    # ======================================================================
+    # 4) Службы Windows
+    # ======================================================================
+    def _remove_service(self, svc_name: str) -> bool:
+        """
+        Удаляет конкретную службу.
+        Return True, если служба была удалена (или попробовали удалить)  
+        False – служба не найдена.
+        """
+        query = run_hidden(
+            ["sc", "query", svc_name],
+            capture_output=True,
+            text=True,
+            encoding="cp866",     # sc выводит CP866 в русской локали
+            errors="ignore",
+        )
+        if query.returncode != 0:
+            return False     # службы нет – нечего удалять
+
+        self._status(f"Остановка службы «{svc_name}»…")
+        log(f"Останавливаем службу {svc_name}", "INFO")
+        run_hidden(["C:\\Windows\\System32\\sc.exe", "stop", svc_name], capture_output=True)
+
+        time.sleep(1)  # даём службе погаснуть
+
+        self._status(f"Удаление службы «{svc_name}»…")
+        log(f"Удаляем службу {svc_name}", "INFO")
+        delete = run_hidden(
+            ["C:\\Windows\\System32\\sc.exe", "delete", svc_name],
+            capture_output=True,
+            text=True,
+            encoding="cp866",
+            errors="ignore",
+        )
+        if delete.returncode == 0:
+            log(f"Служба {svc_name} успешно удалена", "INFO")
+            return True
+        else:
+            err = delete.stderr.strip() or delete.stdout.strip()
+            log(f"Ошибка удаления службы {svc_name}: {err}", "❌ ERROR")
+            return True    # Служба была, попытались удалить ⇒ считаем «что-то удалили»
