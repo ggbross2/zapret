@@ -1,59 +1,47 @@
-# autostart_strategy.py
-
+# autostart_service.py
+# -------------------------------------------------------------
+# Создание / обновление Windows-службы, которая запускает
+# выбранную .bat-стратегию при старте системы.
+# -------------------------------------------------------------
+from __future__ import annotations
 from pathlib import Path
-import json, sys, subprocess, traceback
-from log import log
+import subprocess, json, sys, traceback
 from typing import Callable, Optional
 
+from log import log
+from .autostart_strategy import _resolve_bat_folder     # переиспользуем
+from utils import run_hidden # обёртка для subprocess.run
 
-def _resolve_bat_folder(bat_folder: str) -> Path:
-    """Возвращает абсолютный путь к bat, учитывая PyInstaller one-file."""
-    p = Path(bat_folder)
-    if p.is_absolute():
-        return p
+SERVICE_NAME = "ZapretCensorliber"
 
-    # 1) <cwd>\bat
-    cwd_variant = (Path.cwd() / p).resolve()
-    if cwd_variant.exists():
-        return cwd_variant
-
-    # 2) рядом с exe / _MEIPASS
-    base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
-    exe_variant = (base / p).resolve()
-    if exe_variant.exists():
-        return exe_variant
-
-    return p.resolve()
-
-def setup_autostart_for_strategy(
+def setup_service_for_strategy(
     selected_mode: str,
     bat_folder: str,
     index_path: str | None = None,
     ui_error_cb: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """
-    Создаёт задачу в планировщике на BAT-файл выбранной стратегии.
+    Создаёт (или пере-создаёт) службу Windows, запускающую .bat-файл стратегии.
 
     Args:
-        selected_mode: отображаемое имя стратегии (поле "name" в index.json)
-        bat_folder:    каталог с *.bat* и index.json
-        index_path:    путь к index.json
+        selected_mode : отображаемое имя стратегии (поле "name" в index.json)
+        bat_folder    : каталог, где лежат .bat и index.json
+        index_path    : полный путь к index.json  (опц.)
+        ui_error_cb   : callback для вывода подробной ошибки в GUI
 
     Returns:
-        True  – ярлык создан;
-        False – возникла ошибка (подробности в log()).
+        True  — служба создана / обновлена
+        False — ошибка (причина уже залогирована, ui_error_cb вызван)
     """
     try:
-        # ----------- ищем BAT ------------------------------------------------
+        # ---------- 1. Определяем, какой .bat должен запускаться ----------
         bat_dir = _resolve_bat_folder(bat_folder)
-
         idx_path = Path(index_path) if index_path else bat_dir / "index.json"
         if not idx_path.is_file():
-            log(f"index.json не найден: {idx_path}", "❌ ERROR")
-            return False
+            return _fail(f"index.json не найден: {idx_path}", ui_error_cb)
 
         with idx_path.open(encoding="utf-8-sig") as f:
-            data: dict = json.load(f)
+            data = json.load(f)
 
         entry_key, entry_val = next(
             ((k, v) for k, v in data.items()
@@ -61,119 +49,71 @@ def setup_autostart_for_strategy(
             (None, None)
         )
         if not entry_key:
-            log(f"Стратегия «{selected_mode}» не найдена", "❌ ERROR")
-            return False
+            return _fail(f"Стратегия «{selected_mode}» не найдена", ui_error_cb)
 
-        # берём file_path, если указан
-        if isinstance(entry_val, dict) and entry_val.get("file_path"):
-            bat_name = entry_val["file_path"]
-        else:
-            bat_name = entry_key if entry_key.lower().endswith(".bat") \
-                                 else f"{entry_key}.bat"
-
+        bat_name = (
+            entry_val.get("file_path")
+            if isinstance(entry_val, dict) and entry_val.get("file_path")
+            else (entry_key if entry_key.lower().endswith(".bat") else f"{entry_key}.bat")
+        )
         bat_path = (bat_dir / bat_name).resolve()
         if not bat_path.is_file():
-            log(f".bat отсутствует: {bat_path}", "❌ ERROR")
-            return False
+            return _fail(f".bat отсутствует: {bat_path}", ui_error_cb)
 
-        # ----------- создаём/обновляем задачу Планировщика -------------------
-        ok = _create_task_scheduler_job(
-                task_name="ZapretStrategy",
-                bat_path = bat_path,
-                ui_error_cb = ui_error_cb
-        )
-        return ok
+        # ---------- 2. (Пере)создаём службу --------------------------------
+        # Останавливаем и удаляем, если уже существует
+        _run_sc(["stop",  SERVICE_NAME], ignore_errors=True)
+        _run_sc(["delete", SERVICE_NAME], ignore_errors=True)
 
-    except Exception as exc:
-        log(f"setup_autostart_for_strategy: {exc}", "❌ ERROR")
-        return False
+        # binPath= должен содержать кавычки внутри, а sc требует пробел ПОСЛЕ '='
+        bin_path = f'C:\\Windows\\System32\\cmd.exe /c "{bat_path}"'
 
-def _create_task_scheduler_job(
-    task_name: str,
-    bat_path:  Path,
-    ui_error_cb: Optional[Callable[[str], None]] = None,
-) -> bool:
-    """
-    Создаёт (или перезаписывает) задачу в Планировщике Windows.
-
-    Args:
-        task_name : Имя задачи (напр. "ZapretStrategy")
-        bat_path  : Полный путь к .bat
-        ui_error_cb : callback для вывода ошибки в GUI (QMessageBox/label)
-
-    Returns:
-        True  – задача успешно создана/обновлена
-        False – ошибка (уже залогирована, ui_error_cb вызван)
-    """
-    # Команда запуска: прячем окно через "start \"\""
-    tr_cmd = f'cmd /c start "" "{bat_path}"'
-
-    cmd = [
-        "schtasks", "/Create",
-        "/TN", task_name,
-        "/TR", f'"{bat_path}"',
-        "/SC", "ONLOGON",        # Изменено: при входе в систему вместо при запуске
-        "/RU", "SYSTEM",
-        "/RL", "HIGHEST",        # Запуск с повышенными правами
-        "/IT",                   # Интерактивное выполнение (важно для ONLOGON)
-        "/F"                     # перезаписать, если задача уже существует
-    ]
-
-    try:
-        res = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="cp1251"  # Changed from "utf-8" to "cp1251"
-        )
-        if res.returncode == 0:
-            log(f'Задача "{task_name}" создана/обновлена', "INFO")
+        create_cmd = [
+            "create", SERVICE_NAME,
+            "binPath=", bin_path,
+            "obj=", "LocalSystem",
+            "start=", "auto",
+        ]
+        if _run_sc(create_cmd):
+            _run_sc(["description", SERVICE_NAME,
+                     f"Запуск стратегии {selected_mode}"])
+            log(f'Служба "{SERVICE_NAME}" создана/обновлена', "INFO")
             return True
+        else:
+            return _fail("Не удалось создать службу", ui_error_cb)
 
-        # Ошибка — готовим информативное сообщение
-        err_msg = (f'Не удалось создать задачу автозапуска "{task_name}". '
-                   f'Код {res.returncode}.\n{res.stderr.strip()}')
-        log(err_msg, "❌ ERROR")
-        if ui_error_cb:
-            ui_error_cb(err_msg)
-        return False
-
-    except FileNotFoundError:
-        # schtasks отсутствует (теоретически возможно в WinPE)
-        err_msg = "Команда schtasks не найдена – автозапуск невозможен"
-        log(err_msg, "❌ ERROR")
-        if ui_error_cb:
-            ui_error_cb(err_msg)
-        return False
-    except UnicodeDecodeError:
-        # Fallback: try with errors='ignore' if cp1251 fails
-        try:
-            res = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding="cp1251",
-                errors="ignore"
-            )
-            if res.returncode == 0:
-                log(f'Задача "{task_name}" создана/обновлена (триггер: при входе в систему)', "INFO")
-                return True
-            else:
-                err_msg = (f'Не удалось создать задачу автозапуска "{task_name}". '
-                          f'Код {res.returncode}.\n{res.stderr.strip()}')
-                log(err_msg, "❌ ERROR")
-                if ui_error_cb:
-                    ui_error_cb(err_msg)
-                return False
-        except Exception as fallback_exc:
-            err_msg = f"Ошибка кодировки при создании задачи: {fallback_exc}"
-            log(err_msg, "❌ ERROR")
-            if ui_error_cb:
-                ui_error_cb("Ошибка кодировки; подробности в логе.")
-            return False
     except Exception as exc:
-        err_msg = f"_create_task_scheduler_job: {exc}\n{traceback.format_exc()}"
-        log(err_msg, "❌ ERROR")
-        if ui_error_cb:
-            ui_error_cb("Ошибка создания задачи автозапуска; подробности в логе.")
-        return False
+        msg = f"setup_service_for_strategy: {exc}\n{traceback.format_exc()}"
+        return _fail(msg, ui_error_cb)
+
+
+# -------------------------------------------------------------------------
+# Вспомогательные функции
+# -------------------------------------------------------------------------
+def _run_sc(args: list[str], ignore_errors: bool = False) -> bool:
+    """
+    Запускает `sc.exe` с указанными аргументами.
+
+    Returns True, если returncode == 0.
+    """
+    cmd = ["C:\\Windows\\System32\\sc.exe"] + args
+    res = run_hidden(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="cp866",
+        errors="ignore",
+    )
+    if res.returncode == 0:
+        return True
+    if not ignore_errors:
+        err = f'sc {" ".join(args)} | code {res.returncode}\n{res.stderr.strip()}'
+        log(err, "❌ ERROR")
+    return False
+
+
+def _fail(msg: str, ui_error_cb: Optional[Callable[[str], None]]) -> bool:
+    log(msg, "❌ ERROR")
+    if ui_error_cb:
+        ui_error_cb(msg)
+    return False
