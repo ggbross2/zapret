@@ -42,6 +42,10 @@
 
 <img width="567" height="275" alt="image" src="https://github.com/user-attachments/assets/2438c3d0-8af3-4e5c-ad13-88cb5e692be2" />
 
+Здесь представлено ещё 82 старые стратегии, которые могут Вам помочь:
+
+<img width="871" height="567" alt="image" src="https://github.com/user-attachments/assets/5a84131a-d566-4003-8a7c-b4b36c9e84dc" />
+
 Если это не помогло - можете обратиться в любую нашу группу.
 
 
