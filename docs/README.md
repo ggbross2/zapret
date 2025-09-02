@@ -42,22 +42,6 @@ https://github.com/youtubediscord/zapret/blob/main/docs/build.md
 
 ### Другие полезные сервисы и VPN https://github.com/awesome-windows11/CensorNet
 
-> [!CAUTION]  
-> При любых ошибках просьба **ВСЕГДА** оставляйте скриншот и изображение ошибки.
-> 
-> Не описывайте их на словах (ничего не работает, не запускается и т.д.), **так Вам нельзя будет помочь**, так как не понятно что за проблема.
->
-> 
-> Также следует писать Вашего **провайдера и город**, чтобы можно было составить список рабочих конфигураций для различных провайдеров, который будет не публичный.
-
-> [!WARNING]  
-> Если не работает Discord, указывается используете ли вы **приложение** или веб браузер. Если используется **веб браузер** (_что рекомендуется_), то указывайте бренд и имя версии.
-
-> [!TIP]  
-> Если совсем отчаетесь то можете написать в [ЛС **БЕСПЛАТНЫЙ** запрос на удалённую настройку](https://t.me/youtubenotwork/4764) через AnyDesk. В любой момент подключение можно завершить и удалить программу.
-> 
-> Поддержать разработчиков https://t.me/zapretvpns_bot
-
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=youtubediscord/zapret&type=Date&theme=dark" />
    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=youtubediscord/zapret&type=Date" />
