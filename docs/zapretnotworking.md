@@ -32,7 +32,7 @@
 Перед тем как сообщить нам о том что "Запрет не работает" Вы должны сделать следующее:
 - Проверить ВСЕ стратегии в нужной вам вкладке:
 
-<img width="930" height="132" alt="image" src="https://github.com/user-attachments/assets/621ea548-7b7c-444d-8dca-442ed42ad5fd" />
+<img width="857" height="356" alt="image" src="https://github.com/user-attachments/assets/35a79ccb-c4fb-4979-af1e-0262673976b9" />
 
 - Выключить или включить wssize и ЕЩЁ РАЗ проверить все стратегии в прямом запуске:
 
