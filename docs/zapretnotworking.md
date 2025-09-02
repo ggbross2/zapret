@@ -34,7 +34,7 @@
 
 <img width="857" height="356" alt="image" src="https://github.com/user-attachments/assets/35a79ccb-c4fb-4979-af1e-0262673976b9" />
 
-- Выключить или включить wssize и ЕЩЁ РАЗ проверить все стратегии в прямом запуске:
+- Выключить или включить wssize и ЕЩЁ РАЗ проверить все стратегии в прямом запуске (как в предыдущем пункте):
 
 <img width="930" height="132" alt="image" src="https://github.com/user-attachments/assets/6e006422-2255-45c4-a4be-5e042d9906f3" />
 
