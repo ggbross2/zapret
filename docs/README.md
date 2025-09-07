@@ -1,7 +1,7 @@
 <h1 align="center"><img src="https://i.imgur.com/uABXHHI.png" width="30px"></img> <a href="https://github.com/bol-van/zapret">Zapret</a> (Запрет: обход блокировки Дискорда и Ютуба) </h1>
 
 ### [🛡 Что это такое?](whatfuckthis.md) | [🚀 Как настроить под себя](https://github.com/youtubediscord/zapret/wiki) | [❓ FAQ](https://github.com/youtubediscord/zapret/wiki/FAQ)
-### [⭐ Поддержать проект](premium.md) | [🐳 Win 7 и 8](version.md) | [⛔ Не работает!](zapretnotworking.md) | [👾 О вирусах](https://teletype.in/@censorliber/zapretvirus)
+### [⭐ Поддержать проект](premium.md) | [🐳 Win 7 и 8](version.md) | [⛔ Не работает!](https://github.com/youtubediscord/zapret/wiki/%D0%97%D0%B0%D0%BF%D1%80%D0%B5%D1%82-%D0%BD%D0%B5-%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%B0%D0%B5%D1%82) | [👾 О вирусах](https://teletype.in/@censorliber/zapretvirus)
 
 Один из самых популярных GUI лаунчеров для программы Запрет.
 
