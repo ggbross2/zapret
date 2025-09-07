@@ -1,6 +1,6 @@
 ## Что такое Запрет? Подробнее про ВПН и обходы DPI систем для чайников
 ### Как пользоваться Zapret написано [здесь](https://github.com/youtubediscord/zapret/wiki)
-### Если у Вас не работает Zapret вам [сюда](zapretnotworking.md)
+### Если у Вас не работает Zapret вам [сюда](https://github.com/youtubediscord/zapret/wiki/%D0%97%D0%B0%D0%BF%D1%80%D0%B5%D1%82-%D0%BD%D0%B5-%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%B0%D0%B5%D1%82)
 
 VPN, Tor и обходы DPI - 3 основных метода обхода блокировок в современной России. Рассмотрим каждый подробнее. 
 
